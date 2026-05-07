@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "e7592bac-f7df-47a9-bd7a-0afacacd00f8",
+  "path": "web-search",
+  "path_key": "web-search",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "skillssh/skills/web-search",
+    "subpath": "tools/llm/web-search",
+    "branch": null
+  }
+}

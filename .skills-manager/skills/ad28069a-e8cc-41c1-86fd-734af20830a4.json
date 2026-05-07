@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "ad28069a-e8cc-41c1-86fd-734af20830a4",
+  "path": "karpathy-guidelines",
+  "path_key": "karpathy-guidelines",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "forrestchang/andrej-karpathy-skills/karpathy-guidelines",
+    "subpath": "skills/karpathy-guidelines",
+    "branch": null
+  }
+}
