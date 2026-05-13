@@ -4,6 +4,8 @@ description: "Web search and content extraction with Tavily and Exa via inferenc
 allowed-tools: Bash(belt *)
 ---
 
+> **Install the belt CLI skill:** `npx skills add belt-sh/cli`
+
 # Web Search & Extraction
 
 Search the web and extract content via [inference.sh](https://inference.sh) CLI.
