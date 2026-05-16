@@ -142,7 +142,7 @@ npx skills add inference-sh/skills@llm-models
 npx skills add inference-sh/skills@ai-image-generation
 ```
 
-Browse all apps: `belt app list`
+Browse all apps: `belt app store`
 
 ## Documentation
 
