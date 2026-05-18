@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "b5e4e9e6-1ee8-4e0e-adf3-086cecba3aad",
+  "path": "write-a-skill",
+  "path_key": "write-a-skill",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "mattpocock/skills/write-a-skill",
+    "subpath": "skills/productivity/write-a-skill",
+    "branch": null
+  }
+}
