@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "ce72f97c-b3a9-414f-9060-836488005af1",
+  "path": "caveman",
+  "path_key": "caveman",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "mattpocock/skills/caveman",
+    "subpath": "skills/productivity/caveman",
+    "branch": null
+  }
+}
