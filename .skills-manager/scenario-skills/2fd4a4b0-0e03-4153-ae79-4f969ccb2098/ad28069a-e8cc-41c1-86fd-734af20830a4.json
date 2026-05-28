@@ -10,6 +10,7 @@
     "continue": true,
     "cursor": true,
     "gemini_cli": true,
+    "hermes": true,
     "openclaw": true,
     "opencode": true,
     "qoder": true,
