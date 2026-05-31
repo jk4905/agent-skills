@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "03173902-aad8-4ba9-a75c-4f9f36d0e97b",
+  "path": "llm-wiki",
+  "path_key": "llm-wiki",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "nashsu/llm_wiki_skill/llm-wiki",
+    "subpath": null,
+    "branch": null
+  }
+}
