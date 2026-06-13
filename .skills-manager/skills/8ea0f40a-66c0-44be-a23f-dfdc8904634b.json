@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "8ea0f40a-66c0-44be-a23f-dfdc8904634b",
+  "path": "serenity-skill",
+  "path_key": "serenity-skill",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "muxuuu/serenity-skill/serenity-skill",
+    "subpath": null,
+    "branch": null
+  }
+}
