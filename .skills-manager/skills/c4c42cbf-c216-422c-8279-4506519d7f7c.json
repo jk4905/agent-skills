@@ -8,7 +8,7 @@
   "source": {
     "type": "skillssh",
     "ref": "mattpocock/skills/zoom-out",
-    "subpath": "skills/engineering/zoom-out",
+    "subpath": "skills",
     "branch": null
   }
 }
