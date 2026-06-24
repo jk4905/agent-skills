@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "eff81893-2b32-4f88-bd88-1da8184285b0",
+  "path": "create-colleague",
+  "path_key": "create-colleague",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "titanwings/colleague-skill/create-colleague",
+    "subpath": null,
+    "branch": null
+  }
+}

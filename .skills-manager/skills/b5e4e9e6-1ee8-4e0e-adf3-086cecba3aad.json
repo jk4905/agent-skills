@@ -8,7 +8,7 @@
   "source": {
     "type": "skillssh",
     "ref": "mattpocock/skills/write-a-skill",
-    "subpath": "skills/productivity/write-a-skill",
+    "subpath": "skills",
     "branch": null
   }
 }
