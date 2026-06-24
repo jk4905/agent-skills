@@ -1,0 +1,4 @@
+interface:
+  display_name: "Yourself Skill"
+  short_description: "蒸馏并使用你的工作分身"
+  default_prompt: "Use $yourself-skill 帮我把这段内容改得更像我的判断方式和表达风格。"
