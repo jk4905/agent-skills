@@ -8,6 +8,7 @@
     "claude_code": true,
     "codex": true,
     "cursor": true,
-    "gemini_cli": true
+    "gemini_cli": true,
+    "hermes": true
   }
 }
