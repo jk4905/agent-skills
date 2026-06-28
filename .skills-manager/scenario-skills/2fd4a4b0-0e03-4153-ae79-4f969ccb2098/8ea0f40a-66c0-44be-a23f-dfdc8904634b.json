@@ -9,6 +9,7 @@
     "codex": true,
     "cursor": true,
     "gemini_cli": true,
+    "github_copilot": true,
     "hermes": true
   }
 }
