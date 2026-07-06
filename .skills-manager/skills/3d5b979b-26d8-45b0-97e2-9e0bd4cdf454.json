@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "3d5b979b-26d8-45b0-97e2-9e0bd4cdf454",
+  "path": "design-doc-mermaid",
+  "path_key": "design-doc-mermaid",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "spillwavesolutions/design-doc-mermaid/design-doc-mermaid",
+    "subpath": null,
+    "branch": null
+  }
+}

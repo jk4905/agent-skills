@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "5bd443c8-9126-44ec-98c3-175c597be0cc",
+  "path": "fireworks-tech-graph",
+  "path_key": "fireworks-tech-graph",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "yizhiyanhua-ai/fireworks-tech-graph/fireworks-tech-graph",
+    "subpath": null,
+    "branch": null
+  }
+}
