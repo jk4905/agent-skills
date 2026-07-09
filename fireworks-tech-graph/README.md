@@ -163,6 +163,15 @@ Apply Georgia serif only for the main title and section labels (≥11px); use sa
 
 ## Installation
 
+> [!WARNING]
+> `npx skills add` (v1.5.15) only copies `SKILL.md` — subdirectories like `references/`, `scripts/`, `templates/` are silently dropped. **Use `git clone` for a complete installation.**
+
+```bash
+git clone https://github.com/yizhiyanhua-ai/fireworks-tech-graph.git ~/.claude/skills/fireworks-tech-graph
+```
+
+Or use `npx skills add` (subdirectories may be missing):
+
 ```bash
 npx skills add yizhiyanhua-ai/fireworks-tech-graph
 ```
@@ -178,15 +187,13 @@ Do not use the npm package name with `skills add`, because the CLI resolves inst
 ## Update
 
 ```bash
-npx skills add yizhiyanhua-ai/fireworks-tech-graph --force -g -y
+cd ~/.claude/skills/fireworks-tech-graph && git pull
 ```
 
-Re-run `add --force` to pull the latest version of this skill.
-
-Or clone directly:
+Or re-run the CLI installer:
 
 ```bash
-git clone https://github.com/yizhiyanhua-ai/fireworks-tech-graph.git ~/.claude/skills/fireworks-tech-graph
+npx skills add yizhiyanhua-ai/fireworks-tech-graph --force -g -y
 ```
 
 ---

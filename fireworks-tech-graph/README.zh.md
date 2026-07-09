@@ -149,6 +149,15 @@
 
 ## 安装
 
+> [!WARNING]
+> `npx skills add`（v1.5.15）只会复制 `SKILL.md` 单文件 — `references/`、`scripts/`、`templates/` 等子目录会被静默丢弃。**请使用 `git clone` 获得完整安装。**
+
+```bash
+git clone https://github.com/yizhiyanhua-ai/fireworks-tech-graph.git ~/.claude/skills/fireworks-tech-graph
+```
+
+或使用 `npx skills add`（子目录可能缺失）：
+
 ```bash
 npx skills add yizhiyanhua-ai/fireworks-tech-graph
 ```
@@ -164,15 +173,13 @@ https://www.npmjs.com/package/@yizhiyanhua-ai/fireworks-tech-graph
 ## 更新
 
 ```bash
-npx skills add yizhiyanhua-ai/fireworks-tech-graph --force -g -y
+cd ~/.claude/skills/fireworks-tech-graph && git pull
 ```
 
-用户后续要升级时，直接重新执行一次 `add --force` 即可拉取最新版本。
-
-或直接克隆：
+或重新执行 CLI 安装器：
 
 ```bash
-git clone https://github.com/yizhiyanhua-ai/fireworks-tech-graph.git ~/.claude/skills/fireworks-tech-graph
+npx skills add yizhiyanhua-ai/fireworks-tech-graph --force -g -y
 ```
 
 ---
