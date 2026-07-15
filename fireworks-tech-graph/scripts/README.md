@@ -35,7 +35,7 @@ SVG 图表生成脚本，提供自动验证和 PNG 导出。
 
 **选项：**
 - `-t, --type TYPE` - 图表类型（见脚本帮助）
-- `-s, --style STYLE` - 风格编号（1-8，默认：1）
+- `-s, --style STYLE` - 风格编号（1-12，默认：1）
 - `-o, --output PATH` - 输出路径（默认：当前目录）
 - `-w, --width WIDTH` - PNG 宽度（像素，默认：1920）
 - `--no-validate` - 跳过验证
@@ -57,7 +57,8 @@ SVG 图表生成脚本，提供自动验证和 PNG 导出。
 基于风格配置和 JSON 数据生成 SVG。当前版本不再只是简单塞入 `nodes/arrows`，
 而是会执行 style guide 中的部分可计算规则，例如：
 
-- `style` - 风格编号（1-8）
+- `style` - 风格编号（1-12）或规范风格名
+- `semantic_profile` - 可选语义契约；Style 9-12 默认分别启用 C4、云部署、事件流和可观测性契约
 - `containers` - 泳道 / 分组容器
 - `containers[].header_prefix` / `containers[].header_text` - 工程编号式分区标题
 - `containers[].side_label` - 左侧 layer label
@@ -94,7 +95,7 @@ python3 ./generate-from-template.py memory ./output/mem0.svg '{
 
 ### 4. test-all-styles.sh
 
-批量测试脚本，覆盖 8 种风格。Style 1-7 从 JSON fixture 生成，AI 手绘的 Style 8 使用静态 SVG fixture。
+批量测试脚本覆盖 12 种风格。Style 1-7 与 9-12 从 JSON fixture 生成，AI 手绘的 Style 8 使用静态 SVG fixture；任何风格缺少回归 fixture 都会使批测失败。
 
 **用法：**
 ```bash
@@ -266,6 +267,11 @@ fi
 
 ## 版本历史
 
+- **v1.1.0** (2026-07-15) - 几何与分发升级
+  - Schema v1 与类型化 Diagram IR
+  - 正交路由、端口分流、图例/标签避让、跨线桥与确定性布局报告
+  - `fireworks.py` 统一 CLI 与离线交互 HTML 导出
+  - 完整 npx Skill 镜像、CI、Release archive parity 与安装 canary
 - **v1.0.0** (2026-04-11) - 初始版本
   - SVG 验证脚本
   - 图表生成脚本

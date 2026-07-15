@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -30,8 +31,10 @@ class SkillCompatibilityTest(unittest.TestCase):
 
     def test_distribution_includes_codex_metadata(self) -> None:
         package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
-        self.assertEqual(package["version"], "1.0.5")
+        self.assertRegex(package["version"], r"^\d+\.\d+\.\d+$")
         self.assertIn("agents/", package["files"])
+        self.assertIn("schemas/", package["files"])
+        self.assertEqual(package["bin"]["fireworks-tech-graph"], "scripts/fireworks.py")
         self.assertNotIn("main", package)
 
     def test_install_docs_cover_both_discovery_paths(self) -> None:
@@ -39,6 +42,31 @@ class SkillCompatibilityTest(unittest.TestCase):
             content = (ROOT / readme).read_text(encoding="utf-8")
             self.assertIn("~/.agents/skills/fireworks-tech-graph", content)
             self.assertIn("~/.claude/skills/fireworks-tech-graph", content)
+
+    def test_style_regression_exports_a_fixed_1920px_width(self) -> None:
+        script = (ROOT / "scripts" / "test-all-styles.sh").read_text(encoding="utf-8")
+        self.assertIn("PNG_WIDTH=1920", script)
+        self.assertIn("output_width=int(sys.argv[3])", script)
+        self.assertNotIn("scale=2", script)
+
+    def test_workflows_pin_actions_and_never_persist_checkout_credentials(self) -> None:
+        workflow_dir = ROOT / ".github" / "workflows"
+        if not workflow_dir.is_dir():
+            self.skipTest("repository-only workflow files are not part of the Skill payload")
+        for workflow in ("ci.yml", "release.yml"):
+            content = (workflow_dir / workflow).read_text(encoding="utf-8")
+            checkouts = content.count("actions/checkout@")
+            self.assertGreater(checkouts, 0)
+            self.assertEqual(checkouts, content.count("persist-credentials: false"))
+            action_refs = re.findall(r"uses:\s+actions/[\w-]+@([^\s#]+)", content)
+            self.assertTrue(action_refs)
+            self.assertTrue(all(re.fullmatch(r"[0-9a-f]{40}", ref) for ref in action_refs))
+
+    def test_current_release_notes_are_in_the_distribution(self) -> None:
+        package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+        notes = ROOT / "docs" / "releases" / f'v{package["version"]}.md'
+        self.assertTrue(notes.is_file(), notes)
+        self.assertIn("Node.js 18", notes.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

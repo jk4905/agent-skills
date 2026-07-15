@@ -16,12 +16,12 @@ SPEC.loader.exec_module(validate_svg)
 
 
 class ValidateSvgTest(unittest.TestCase):
-    def write_svg(self, body: str) -> Path:
+    def write_svg(self, body: str, root_attrs: str = "") -> Path:
         tempdir = tempfile.TemporaryDirectory()
         self.addCleanup(tempdir.cleanup)
         path = Path(tempdir.name) / "diagram.svg"
         path.write_text(
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240">'
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" {root_attrs}>'
             '<defs><marker id="arrow-main"><path d="M0 0 L8 4 L0 8 Z"/></marker></defs>'
             f"{body}</svg>",
             encoding="utf-8",
@@ -75,6 +75,15 @@ class ValidateSvgTest(unittest.TestCase):
         self.assertFalse(validate_svg.run_check(quadratic, "collisions")[0])
         self.assertFalse(validate_svg.run_check(cubic, "collisions")[0])
 
+    def test_elliptical_arc_is_sampled_instead_of_reduced_to_its_chord(self) -> None:
+        path = self.write_svg(
+            '<rect id="blocker" x="160" y="15" width="80" height="40"/>'
+            '<path id="edge" d="M 20 180 A 180 160 0 0 1 380 180" marker-end="url(#arrow-main)"/>'
+        )
+        ok, details = validate_svg.run_check(path, "collisions")
+        self.assertFalse(ok)
+        self.assertIn("path#edge intersects rect#blocker", details)
+
     def test_boundary_to_boundary_connection_is_not_a_collision(self) -> None:
         path = self.write_svg(
             '<rect id="source" x="20" y="80" width="80" height="60"/>'
@@ -103,6 +112,17 @@ class ValidateSvgTest(unittest.TestCase):
         ok, details = validate_svg.run_check(path, "collisions")
         self.assertTrue(ok, details)
 
+    def test_legacy_legend_remains_an_obstacle_for_business_edges(self) -> None:
+        path = self.write_svg(
+            '<rect id="legend" x="200" y="150" width="180" height="70"/>'
+            '<path id="sample-a" d="M 220 170 H 260" marker-end="url(#arrow-main)"/>'
+            '<path id="sample-b" d="M 220 195 H 260" marker-end="url(#arrow-main)"/>'
+            '<path id="business" d="M 300 20 V 190 H 100" marker-end="url(#arrow-main)"/>'
+        )
+        ok, details = validate_svg.run_check(path, "collisions")
+        self.assertFalse(ok)
+        self.assertIn("path#business intersects rect#legend", details)
+
     def test_group_transform_is_applied_to_paths_and_obstacles(self) -> None:
         path = self.write_svg(
             '<g transform="translate(80 20)">'
@@ -113,6 +133,45 @@ class ValidateSvgTest(unittest.TestCase):
         ok, details = validate_svg.run_check(path, "collisions")
         self.assertFalse(ok)
         self.assertEqual(details, ["path#edge intersects rect#blocker"])
+
+    def test_showcase_composition_rejects_more_than_two_bends(self) -> None:
+        path = self.write_svg(
+            '<path id="zigzag" data-graph-role="edge" d="M 20 20 H 80 V 60 H 140 V 120" '
+            'marker-end="url(#arrow-main)"/>',
+            'data-quality-profile="showcase"',
+        )
+        ok, details = validate_svg.run_check(path, "composition")
+        self.assertFalse(ok)
+        self.assertTrue(any("edge_bend_budget" in detail for detail in details), details)
+
+    def test_showcase_composition_rejects_tight_node_spacing(self) -> None:
+        path = self.write_svg(
+            '<rect id="lane" data-graph-role="container" x="10" y="10" width="380" height="210"/>'
+            '<rect id="first" data-graph-role="node" x="40" y="70" width="80" height="60"/>'
+            '<rect id="second" data-graph-role="node" x="140" y="70" width="80" height="60"/>',
+            'data-quality-profile="showcase"',
+        )
+        ok, details = validate_svg.run_check(path, "composition")
+        self.assertFalse(ok)
+        self.assertTrue(any("node_gap" in detail for detail in details), details)
+
+    def test_composition_detects_near_miss_label_clearance(self) -> None:
+        path = self.write_svg(
+            '<path id="flow" data-graph-role="edge" d="M 20 100 H 380" marker-end="url(#arrow-main)"/>'
+            '<text id="near" data-graph-role="label" data-owner="other" x="200" y="94" '
+            'text-anchor="middle" font-size="12">near miss</text>',
+            'data-quality-profile="standard" data-min-label-clearance="4"',
+        )
+        geometry_ok, geometry_details = validate_svg.run_check(path, "geometry")
+        self.assertTrue(geometry_ok, geometry_details)
+        composition_ok, composition_details = validate_svg.run_check(path, "composition")
+        self.assertFalse(composition_ok)
+        self.assertTrue(any("label_clearance" in detail for detail in composition_details), composition_details)
+
+    def test_dark_luxury_fixture_passes_the_same_composition_gate(self) -> None:
+        fixture = SCRIPT.parents[1] / "fixtures" / "dark-luxury-style8.svg"
+        ok, details = validate_svg.run_check(fixture, "composition")
+        self.assertTrue(ok, details)
 
 
 if __name__ == "__main__":
