@@ -2,6 +2,8 @@
 
 All notable changes use semantic versioning.
 
+Historical `1.0.0` through `1.0.4` entries were reconstructed from the published npm artifacts and their registry-recorded `gitHead` values. See [`docs/releases/`](docs/releases/) for provenance details.
+
 ## 1.2.0 — 2026-07-17
 
 - Added one focused motion contract: generated semantic SVG in, validated GIF plus a JSON motion report out. The renderer rejects raster inputs and unsupported media formats.
@@ -27,6 +29,39 @@ All notable changes use semantic versioning.
 - Refreshed the official 12-style PNG showcase and product website with one distinct engineering scenario per style.
 - Raised the supported Node.js runtime baseline to Node.js 18+.
 
-## 1.0.5
+## 1.0.5 — 2026-07-11
 
-- Added Codex metadata, Style 8 reference assets, and structural SVG validation.
+- Added shared Codex and Claude Code support, compatibility metadata, tests, and installation guidance.
+- Added Style 8 Dark Luxury and expanded the gallery to eight distinct visual styles.
+- Added a bounded generate-validate-repair loop, structural SVG validation, and optional visual self-review.
+- Improved connector routing, label placement, overlap prevention, clipping guidance, CJK font fallbacks, and helper-script robustness.
+- Switched the default PNG renderer to CairoSVG and documented renderer-specific edge cases.
+- Added the first GitHub Pages product showcase.
+
+## 1.0.4 — 2026-04-12
+
+- Added an explicit `npx skills add ... --force -g -y` update workflow to the English README, Chinese README, and Skill instructions.
+- Published npm package `1.0.4` with Node.js 14+ metadata.
+
+## 1.0.3 — 2026-04-12
+
+- Clarified that `skills add` installs from the GitHub repository while npm remains the package and distribution page.
+- Replaced the legacy install example with `npx skills add yizhiyanhua-ai/fireworks-tech-graph`.
+- Published npm package `1.0.3` with the corrected install-source guidance.
+
+## 1.0.2 — 2026-04-12
+
+- Added the style-driven generator, fixtures, reusable SVG templates, and a seven-style diagram matrix.
+- Refreshed the seven official showcase images and expanded SVG validation and all-style test scripts.
+- Added formal npm package metadata for repository, license, files, runtime, and discovery keywords.
+- Expanded the npm package payload to include fixtures and templates.
+
+## 1.0.1 — 2026-04-12
+
+- Added an explicit layout validation checklist covering connector-node collisions, text overflow, endpoint alignment, and label backgrounds.
+- Normalized npm repository metadata.
+
+## 1.0.0 — 2026-04-12
+
+- Published the first npm package for the Agent Skill.
+- Shipped seven built-in diagram styles, SVG and PNG generation, architecture and UML guidance, validation scripts, and bilingual documentation.
