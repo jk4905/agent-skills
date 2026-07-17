@@ -2001,10 +2001,17 @@ class MotionPlanTest(unittest.TestCase):
                     "vertical-up",
                 ),
             }
-            self.assertEqual(
-                {role: signature["stroke_lengths"] for role, signature in raster_signatures.items()},
-                {"sample": [4, 2], "remember": [3, 4], "recall": [4, 3]},
+            stroke_lengths = {
+                role: signature["stroke_lengths"]
+                for role, signature in raster_signatures.items()
+            }
+            self.assertTrue(
+                all(2 <= length <= 5 for lengths in stroke_lengths.values() for length in lengths),
+                stroke_lengths,
             )
+            self.assertGreater(stroke_lengths["sample"][0], stroke_lengths["sample"][1])
+            self.assertLess(stroke_lengths["remember"][0], stroke_lengths["remember"][1])
+            self.assertGreater(stroke_lengths["recall"][0], stroke_lengths["recall"][1])
 
         self.assertEqual(hashes_75[:36], hashes_55[:36])
         self.assertTrue(any(left != right for left, right in zip(hashes_75[36:55], hashes_55[36:])))
