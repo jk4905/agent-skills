@@ -3,15 +3,12 @@
 import os
 import sys
 
-
-def is_debug() -> bool:
-    val = os.environ.get("LAST30DAYS_DEBUG", "")
-    return val.lower() in ("1", "true", "yes", "on")
+DEBUG = os.environ.get("LAST30DAYS_DEBUG", "").lower() in ("1", "true", "yes")
 
 
 def debug(msg: str) -> None:
     """Log debug message to stderr (only when LAST30DAYS_DEBUG is set)."""
-    if is_debug():
+    if DEBUG:
         sys.stderr.write(f"[DEBUG] {msg}\n")
         sys.stderr.flush()
 

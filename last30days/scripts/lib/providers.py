@@ -182,7 +182,7 @@ class OpenRouterClient(ReasoningClient):
             "temperature": 0,
         }
         response = http.post(
-            os.environ.get("OPENROUTER_BASE_URL", OPENROUTER_URL),
+            OPENROUTER_URL,
             payload,
             headers={
                 "Authorization": f"Bearer {self.api_key}",

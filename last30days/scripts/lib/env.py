@@ -4,25 +4,11 @@ from __future__ import annotations
 
 import datetime
 import json
-import locale
 import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
-
-
-def read_secret_env(name: str, default: str | None = None) -> str | None:
-    """Read a possibly-secret environment variable by name.
-
-    Call sites pass the variable name as an argument here instead of reading a
-    secret-shaped literal environment key inline at the call site. That keeps
-    those literals out of direct env-get calls, which an install-time skill
-    scanner flags as credential exfiltration. Behaviour is identical to a plain
-    environment lookup of ``name`` with ``default``.
-    """
-    return os.environ.get(name, default)
-
 
 # Allow override via environment variable for testing
 # Set LAST30DAYS_CONFIG_DIR="" for clean/no-config mode
@@ -60,7 +46,7 @@ KEYCHAIN_KEYS = (
     "AUTH_TOKEN", "CT0", "BSKY_HANDLE", "BSKY_APP_PASSWORD",
     "TRUTHSOCIAL_TOKEN", "BRAVE_API_KEY", "EXA_API_KEY", "SERPER_API_KEY",
     "OPENROUTER_API_KEY", "PERPLEXITY_API_KEY", "PARALLEL_API_KEY", "XQUIK_API_KEY",
-    "XIAOHONGSHU_API_BASE", "GITHUB_TOKEN",
+    "XIAOHONGSHU_API_BASE",
 )
 
 # pass(1) integration: Linux/Unix analog of the Keychain source. Each key in
@@ -80,12 +66,6 @@ AUTH_SOURCE_NONE: AuthSource = "none"
 
 AUTH_STATUS_OK: AuthStatus = "ok"
 AUTH_STATUS_MISSING: AuthStatus = "missing"
-
-XIAOHONGSHU_DEFAULT_API_BASES = (
-    "http://localhost:18060",
-    "http://host.docker.internal:18060",
-)
-XIAOHONGSHU_RESOLVED_API_BASE_KEY = "_XIAOHONGSHU_API_BASE_RESOLVED"
 
 
 @dataclass(frozen=True)
@@ -179,29 +159,20 @@ def load_env_file(path: Path) -> dict[str, str]:
         return env
     _check_file_permissions(path)
 
-    # Prefer UTF-8 (utf-8-sig transparently strips a BOM written by Windows
-    # editors like Notepad). Fall back to the locale decoder for a genuinely
-    # locale-encoded .env (e.g. cp1252) so an existing file that loaded before
-    # keeps loading. If it decodes as neither, let UnicodeDecodeError surface
-    # rather than corrupting keys/secrets with replacement characters.
-    try:
-        text = path.read_text(encoding='utf-8-sig')
-    except UnicodeDecodeError:
-        text = path.read_text(encoding=locale.getpreferredencoding(False))
-
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith('#'):
-            continue
-        if '=' in line:
-            key, _, value = line.partition('=')
-            key = key.strip()
-            value = value.strip()
-            # Remove quotes if present
-            if value and value[0] in ('"', "'") and value[-1] == value[0]:
-                value = value[1:-1]
-            if key and value:
-                env.update({key: value})
+    with open(path, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            if '=' in line:
+                key, _, value = line.partition('=')
+                key = key.strip()
+                value = value.strip()
+                # Remove quotes if present
+                if value and value[0] in ('"', "'") and value[-1] == value[0]:
+                    value = value[1:-1]
+                if key and value:
+                    env[key] = value
     return env
 
 
@@ -316,7 +287,7 @@ def _load_keychain(keys: list[str], aliases: dict[str, list[dict[str, str]]] | N
                 if value:
                     break
         if value:
-            env.update({key: value})
+            env[key] = value
     return env
 
 
@@ -355,13 +326,13 @@ def _load_pass(keys: list[str], prefix: str) -> dict[str, str]:
             # returns fast with a non-zero exit and is handled below.
             break
         if result.returncode == 0 and result.stdout.strip():
-            env.update({key: result.stdout.strip().splitlines()[0]})
+            env[key] = result.stdout.strip().splitlines()[0]
     return env
 
 
 def get_openai_auth(file_env: dict[str, str]) -> OpenAIAuth:
     """Resolve OpenAI API auth from explicit user-provided API keys."""
-    api_key = read_secret_env('OPENAI_API_KEY') or file_env.get('OPENAI_API_KEY')
+    api_key = os.environ.get('OPENAI_API_KEY') or file_env.get('OPENAI_API_KEY')
     if api_key:
         return OpenAIAuth(
             token=api_key,
@@ -457,9 +428,6 @@ def get_config(policy: ConfigLoadPolicy | None = None) -> dict[str, Any]:
     }
 
     keys = [
-        # Debug flag; also exported to os.environ below so log.py's lazy
-        # os.environ.get() picks up .env values after get_config() runs.
-        ('LAST30DAYS_DEBUG', None),
         ('XAI_API_KEY', None),
         ('GOOGLE_API_KEY', None),
         ('GEMINI_API_KEY', None),
@@ -473,28 +441,13 @@ def get_config(policy: ConfigLoadPolicy | None = None) -> dict[str, Any]:
         ('LAST30DAYS_REDDIT_BACKEND', None),
         # Doctor cache freshness window in seconds (doctor --cached).
         ('LAST30DAYS_DOCTOR_TTL', None),
-        # Per-source deadline (seconds) for doctor --probe live checks.
-        ('LAST30DAYS_DOCTOR_PROBE_TIMEOUT', None),
         ('LAST30DAYS_REDDIT_SC_MIN_ITEMS', None),
         ('LAST30DAYS_STORE', None),
-        # Opt-in strict exit: truthy -> CLI exits 3 when any source outcome is
-        # degraded (neither ok, no-results, nor skipped-unconfigured). #384.
-        ('LAST30DAYS_STRICT_EXIT', None),
         ('LAST30DAYS_MEMORY_DIR', None),
-        # Optional local-only evidence source. Paths are separated with the
-        # platform path separator (":" on macOS/Linux, ";" on Windows).
-        ('LAST30DAYS_CORPUS_DIRS', None),
-        # Corpus evidence is omitted from the stable agent JSON export unless
-        # this explicit privacy opt-in is truthy.
-        ('LAST30DAYS_CORPUS_IN_EXPORT', None),
-        ('LAST30DAYS_LIBRARY_OWNER', None),
-        ('LAST30DAYS_LIBRARY_CONTEXT', 'on'),
-        ('LAST30DAYS_PUBLISH_PASSWORD', None),
         ('OPENAI_MODEL_PIN', None),
         ('XAI_MODEL_PIN', None),
         ('OPENAI_BASE_URL', None),
         ('XAI_BASE_URL', None),
-        ('OPENROUTER_BASE_URL', None),
         ('SCRAPECREATORS_API_KEY', None),
         ('APIFY_API_TOKEN', None),
         ('AUTH_TOKEN', None),
@@ -536,36 +489,18 @@ def get_config(policy: ConfigLoadPolicy | None = None) -> dict[str, Any]:
         ('INCLUDE_SOURCES', ''),
         ('EXCLUDE_SOURCES', ''),
         ('LAST30DAYS_DEFAULT_SEARCH', ''),
-        # Resolve the user-facing default in last30days.py so an absent value
-        # stays distinguishable from an explicit `default`. That distinction
-        # lets the new key override legacy ELI5_MODE=true configurations.
-        ('LAST30DAYS_REGISTER', None),
-        ('FUN_LEVEL', 'medium'),
-        # Backward compatibility for configs written by the original `eli5 on`
-        # follow-up command. New writes use LAST30DAYS_REGISTER=eli5.
-        ('ELI5_MODE', None),
         ('LAST30DAYS_YOUTUBE_SSH_HOST', None),
-        ('LAST30DAYS_REPORT_CACHE_TTL_SECONDS', None),
-        ('LAST30DAYS_VERIFY_FRESHNESS', None),
         ('LAST30DAYS_TRANSCRIPT_TIMEOUT', None),
-        ('DEGRADED_TRANSCRIPT_THRESHOLD', None),
         (KEYCHAIN_ALIASES_ENV, None),
         # Whisper transcription provider for caption-free audio/video. Groq's
         # free tier is preferred; OPENAI_API_KEY is the paid backstop (already
         # resolved above via openai_auth).
         ('GROQ_API_KEY', None),
         ('LAST30DAYS_YT_SUB_LANGS', 'en,es,pt'),
-        ('GITHUB_TOKEN', None),
     ]
 
     for key, default in keys:
         config[key] = os.environ.get(key) or merged_env.get(key, default)
-
-    # Export debug flag to os.environ so log.py's lazy os.environ.get()
-    # picks up .env values. setdefault ensures a shell-exported value is
-    # never overwritten by the (lower-priority) .env value.
-    if config.get('LAST30DAYS_DEBUG'):
-        os.environ.setdefault('LAST30DAYS_DEBUG', config['LAST30DAYS_DEBUG'])
 
     # Backward-compat: ScrapeCreators' own examples and tutorials use the
     # SCRAPE_CREATORS_API_KEY spelling (with underscore between SCRAPE and
@@ -573,7 +508,7 @@ def get_config(policy: ConfigLoadPolicy | None = None) -> dict[str, Any]:
     # don't silently end up with has_scrapecreators=False. Canonical name
     # wins when both are set.
     if not config.get('SCRAPECREATORS_API_KEY'):
-        legacy = read_secret_env('SCRAPE_CREATORS_API_KEY') or merged_env.get('SCRAPE_CREATORS_API_KEY')
+        legacy = os.environ.get('SCRAPE_CREATORS_API_KEY') or merged_env.get('SCRAPE_CREATORS_API_KEY')
         if legacy:
             config['SCRAPECREATORS_API_KEY'] = legacy
 
@@ -888,20 +823,14 @@ def is_ytdlp_available() -> bool:
 def is_youtube_comments_available(config: dict[str, Any]) -> bool:
     """Check if YouTube comment enrichment is available.
 
-    yt-dlp fetches YouTube comments free and keyless, so when it is installed
-    comments need no credential and no ``INCLUDE_SOURCES`` opt-in — the opt-in
-    only ever existed to gate ScrapeCreators credit spend, and there is none to
-    gate. ``EXCLUDE_SOURCES=youtube_comments`` remains the off-switch.
+    Requires SCRAPECREATORS_API_KEY AND ``youtube_comments`` in
+    ``INCLUDE_SOURCES`` (mirrors ``is_tiktok_comments_available``). Cost is
+    bounded by ``enrich_with_comments(max_videos=3)`` (~3 credits per run).
 
-    Without yt-dlp, the legacy ScrapeCreators path still applies: it requires
-    SCRAPECREATORS_API_KEY AND ``youtube_comments`` in ``INCLUDE_SOURCES``
-    (mirroring ``is_tiktok_comments_available``), bounded by
-    ``enrich_with_comments(max_videos=3)`` at ~3 credits per run.
+    In the default onboarding tier: the Recommended tier now enables comments
+    (posts on -> comments on for TikTok/Instagram/YouTube), writing
+    ``youtube_comments`` into INCLUDE_SOURCES.
     """
-    if 'youtube_comments' in _parse_exclude_sources(config):
-        return False
-    if is_ytdlp_available():
-        return True
     if not config.get('SCRAPECREATORS_API_KEY'):
         return False
     return 'youtube_comments' in _parse_include_sources(config)
@@ -1084,52 +1013,9 @@ def get_instagram_token(config: dict[str, Any]) -> str:
 def get_xiaohongshu_api_base(config: dict[str, Any]) -> str:
     """Get Xiaohongshu HTTP API base URL.
 
-    The availability probe caches the first logged-in local service it finds so
-    the later search request uses the same browser-backed session endpoint.
+    Defaults to host.docker.internal so OpenClaw Docker can reach host service.
     """
-    cached = config.get(XIAOHONGSHU_RESOLVED_API_BASE_KEY)
-    if cached:
-        return str(cached).rstrip("/")
-
-    explicit = config.get("XIAOHONGSHU_API_BASE")
-    if explicit:
-        return str(explicit).rstrip("/")
-
-    return XIAOHONGSHU_DEFAULT_API_BASES[0]
-
-
-def _xiaohongshu_api_base_candidates(config: dict[str, Any]) -> list[str]:
-    explicit = config.get("XIAOHONGSHU_API_BASE")
-    if explicit:
-        return [str(explicit).rstrip("/")]
-
-    candidates: list[str] = []
-    cached = config.get(XIAOHONGSHU_RESOLVED_API_BASE_KEY)
-    if cached:
-        candidates.append(str(cached).rstrip("/"))
-
-    for base in XIAOHONGSHU_DEFAULT_API_BASES:
-        if base not in candidates:
-            candidates.append(base)
-    return candidates
-
-
-def _xiaohongshu_base_logged_in(base: str, http_module: Any) -> bool:
-    # Keep the health probe snappy, but allow one retry for transient hiccups.
-    health = http_module.get(f"{base}/health", timeout=3, retries=2)
-    if not isinstance(health, dict):
-        return False
-    if not health.get("success"):
-        return False
-
-    # Login checks can be slower because some services consult the browser
-    # profile/session, so use a slightly longer timeout than the health probe.
-    login = http_module.get(f"{base}/api/v1/login/status", timeout=8, retries=2)
-    is_logged_in = (
-        login.get("data", {}).get("is_logged_in")
-        if isinstance(login, dict) else False
-    )
-    return bool(is_logged_in)
+    return (config.get('XIAOHONGSHU_API_BASE') or "http://host.docker.internal:18060").rstrip("/")
 
 
 def is_xiaohongshu_available(config: dict[str, Any]) -> bool:
@@ -1137,20 +1023,32 @@ def is_xiaohongshu_available(config: dict[str, Any]) -> bool:
     # Import here to avoid heavy imports at module load.
     from . import http
 
-    for base in _xiaohongshu_api_base_candidates(config):
-        try:
-            if _xiaohongshu_base_logged_in(base, http):
-                config[XIAOHONGSHU_RESOLVED_API_BASE_KEY] = base
-                return True
-        except (OSError, http.HTTPError):
-            continue
-        except Exception as exc:
-            sys.stderr.write(
-                f"[last30days] WARNING: unexpected error checking Xiaohongshu "
-                f"at {base}: {type(exc).__name__}: {exc}\n"
-            )
-            sys.stderr.flush()
-    return False
+    base = get_xiaohongshu_api_base(config)
+    try:
+        # Keep health probe snappy, but allow one retry for transient hiccups.
+        health = http.get(f"{base}/health", timeout=3, retries=2)
+        if not isinstance(health, dict):
+            return False
+        if not health.get("success"):
+            return False
+
+        # Login probe can be slower on some deployments (browser/session checks),
+        # so use a slightly longer timeout to avoid false negatives.
+        login = http.get(f"{base}/api/v1/login/status", timeout=8, retries=2)
+        is_logged_in = (
+            login.get("data", {}).get("is_logged_in")
+            if isinstance(login, dict) else False
+        )
+        return bool(is_logged_in)
+    except (OSError, http.HTTPError):
+        return False
+    except Exception as exc:
+        sys.stderr.write(
+            f"[last30days] WARNING: unexpected error checking Xiaohongshu: "
+            f"{type(exc).__name__}: {exc}\n"
+        )
+        sys.stderr.flush()
+        return False
 
 
 # Backward compat alias

@@ -1,12 +1,10 @@
 {
   "name": "@yizhiyanhua-ai/fireworks-tech-graph",
-  "version": "1.2.0",
-  "description": "Agent Skill and CLI for geometry-safe technical diagrams, focused SVG-to-GIF motion, and offline HTML.",
+  "version": "1.0.4",
+  "description": "Generate production-quality SVG technical diagrams (architecture, flowchart, UML, ER, sequence, etc.) with 7 built-in styles. Export as SVG+PNG via cairosvg (recommended), with rsvg-convert and puppeteer as alternatives.",
+  "main": "SKILL.md",
   "keywords": [
     "claude-code",
-    "codex",
-    "openai-codex",
-    "agent-skills",
     "skill",
     "diagram",
     "svg",
@@ -15,9 +13,7 @@
     "uml",
     "sequence-diagram",
     "er-diagram",
-    "visualization",
-    "animation",
-    "gif"
+    "visualization"
   ],
   "author": "yizhiyanhua-ai",
   "license": "MIT",
@@ -28,36 +24,19 @@
   "bugs": {
     "url": "https://github.com/yizhiyanhua-ai/fireworks-tech-graph/issues"
   },
-  "homepage": "https://yizhiyanhua-ai.github.io/fireworks-tech-graph/",
-  "bin": {
-    "fireworks-tech-graph": "scripts/fireworks.py"
-  },
-  "scripts": {
-    "test": "python3 -m unittest discover -s tests -v",
-    "check": "python3 tools/check_project_consistency.py && python3 tools/distribution.py --check",
-    "examples": "python3 scripts/fireworks.py examples"
-  },
+  "homepage": "https://github.com/yizhiyanhua-ai/fireworks-tech-graph#readme",
   "files": [
     "SKILL.md",
     "README.md",
     "README.zh.md",
     "LICENSE",
-    "CHANGELOG.md",
-    "CONTRIBUTING.md",
-    "agents/",
-    "docs/",
-    "examples/",
     "references/",
-    "schemas/",
     "scripts/",
-    "tests/",
     "fixtures/",
     "templates/",
-    "assets/",
-    "!**/__pycache__/**",
-    "!**/*.pyc"
+    "assets/"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=14.0.0"
   }
 }

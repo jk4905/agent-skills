@@ -141,8 +141,7 @@ def _execute_search(
     full_url = f"{_BASE_URL}/x/tweets/search?q={_url_encode(q)}&queryType=Top&limit={limit}"
     _log(f"Searching: {label}")
     try:
-        request_headers = {"X-Api-Key": token}
-        response = http.get(full_url, headers=request_headers, timeout=30, retries=2)
+        response = http.get(full_url, headers={"X-Api-Key": token}, timeout=30, retries=2)
     except http.HTTPError as exc:
         status = getattr(exc, "status_code", None)
         if status == 402:
@@ -281,8 +280,7 @@ def probe_works(token: str, timeout: int = 8) -> Optional[bool]:
     q = f"from:x since:{since}"
     full_url = f"{_BASE_URL}/x/tweets/search?q={_url_encode(q)}&queryType=Top&limit=1"
     try:
-        request_headers = {"X-Api-Key": token}
-        http.get(full_url, headers=request_headers, timeout=timeout, retries=0)
+        http.get(full_url, headers={"X-Api-Key": token}, timeout=timeout, retries=0)
     except http.HTTPError as exc:
         status = getattr(exc, "status_code", None)
         if status == 402:

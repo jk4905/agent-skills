@@ -8,7 +8,7 @@
   "source": {
     "type": "skillssh",
     "ref": "mattpocock/skills/to-issues",
-    "subpath": "skills",
+    "subpath": "skills/engineering/to-issues",
     "branch": null
   }
 }

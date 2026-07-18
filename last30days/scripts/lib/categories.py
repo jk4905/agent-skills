@@ -23,7 +23,6 @@ before `ai_chat_model` so "gpt image 2" matches the image-gen category.
 
 from __future__ import annotations
 
-import re
 from typing import List, Optional, TypedDict
 
 
@@ -127,8 +126,6 @@ CATEGORY_PEERS: dict[str, _CategoryEntry] = {
     },
     "ai_agent_framework": {
         "patterns": [
-            "ai agent",
-            "ai agents",
             "agent framework",
             "agentic framework",
             "langchain",
@@ -267,10 +264,7 @@ def detect_category(topic: Optional[str]) -> Optional[str]:
     lowered = topic.lower()
     for category_id, entry in CATEGORY_PEERS.items():
         for pattern in entry["patterns"]:
-            # Word-boundary match: "ai agent" must not fire on "Dubai agents"
-            # or "Thai agents". Substring matching classified those as
-            # ai_agent_framework and routed discovery to LangChain subreddits.
-            if re.search(rf"(?<![a-z0-9]){re.escape(pattern)}(?![a-z0-9])", lowered):
+            if pattern in lowered:
                 return category_id
     return None
 

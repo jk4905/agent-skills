@@ -40,7 +40,6 @@ ALL_KEYS=(
   PARALLEL_API_KEY
   XQUIK_API_KEY
   XIAOHONGSHU_API_BASE
-  GITHUB_TOKEN
 )
 
 if [[ "${OSTYPE:-}" != darwin* ]]; then
