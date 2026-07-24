@@ -2410,6 +2410,10 @@ def run(
         shortlist_size=settings["rerank_limit"],
         resolved_handles=resolved_handles,
     )
+    ranked_public = rerank.prune_fallback_entity_misses(ranked_public, topic=topic)
+    # Private corpus already cleared a body-aware retrieval floor; do not apply
+    # the public title/snippet visibility gate (filenames often omit the head
+    # token even when the document body matched).
     ranked_candidates = sorted(
         [*ranked_public, *ranked_private],
         key=lambda candidate: (

@@ -7,7 +7,7 @@ import re
 import unicodedata
 from collections import Counter
 
-from . import categories, entity_extract, http, providers, query, relevance, schema
+from . import categories, competitors, entity_extract, http, providers, query, relevance, schema
 
 # Hebrew Unicode block: U+0590–U+05FF
 _HEBREW_RE = re.compile(r'[\u0590-\u05FF]')
@@ -804,7 +804,12 @@ _TRAILING_CONTEXT = re.compile(
 )
 
 
-def _comparison_entities(topic: str) -> list[str]:
+def _comparison_entities(topic: str, *, uncapped: bool = False) -> list[str]:
+    """Split a comparison topic into entity names.
+
+    Caps at ``competitors.COMPARISON_ENTITY_MAX`` unless ``uncapped`` (caller
+    truncates and may warn about dropped entities).
+    """
     # "difference between X and Y" -> "X vs Y" (replace "and" only in this context)
     normalized = re.sub(
         r"\bdifference between\s+(.+?)\s+and\s+",
@@ -819,14 +824,16 @@ def _comparison_entities(topic: str) -> list[str]:
         if part.strip(" \t\r\n?.,:;!()[]{}\"'")
     ]
     # Strip trailing context from parts ("Svelte for frontend in 2026" -> "Svelte")
-    if len(parts) >= 2:
-        parts = [_TRAILING_CONTEXT.sub("", part).strip() or part for part in parts]
-        deduped = []
-        for part in parts:
-            if part and part not in deduped:
-                deduped.append(part)
-        return deduped[:_max_subqueries("comparison")]
-    return []
+    if len(parts) < 2:
+        return []
+    parts = [_TRAILING_CONTEXT.sub("", part).strip() or part for part in parts]
+    deduped: list[str] = []
+    for part in parts:
+        if part and part not in deduped:
+            deduped.append(part)
+    if uncapped:
+        return deduped
+    return deduped[: competitors.COMPARISON_ENTITY_MAX]
 
 
 def _should_force_deterministic_plan(topic: str) -> bool:
@@ -901,7 +908,8 @@ def _max_subqueries(intent: str, topic: str | None = None) -> int:
     # Hermes Agent Use Cases failure: prior cap of 3 produced near-literal
     # echoes of the topic instead of a paraphrase fanout.
     if intent == "comparison":
-        return 4
+        # primary + one dedicated subquery per entity (up to COMPARISON_ENTITY_MAX)
+        return competitors.COMPARISON_ENTITY_MAX + 1
     # Intent-modifier topics get headroom for paraphrase fanout even when
     # the intent itself is factual/concept. Without this, a "Hermes Agent
     # use cases" query (classified "concept" after the 2026-04-19 default

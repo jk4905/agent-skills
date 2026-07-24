@@ -591,6 +591,18 @@ def _ytdlp_sub_langs() -> str:
     return ",".join(code.strip().lower() for code in raw.split(",") if code.strip()) or "en,es,pt"
 
 
+def _transcript_fast_timeout() -> float:
+    """Return the keyed-run yt-dlp timeout, preserving the 12s default."""
+    raw = os.environ.get("LAST30DAYS_YT_TRANSCRIPT_FAST_TIMEOUT", "").strip()
+    try:
+        timeout = float(raw) if raw else float(_TRANSCRIPT_FAST_TIMEOUT)
+    except ValueError:
+        return float(_TRANSCRIPT_FAST_TIMEOUT)
+    if not math.isfinite(timeout) or timeout <= 0:
+        return float(_TRANSCRIPT_FAST_TIMEOUT)
+    return timeout
+
+
 def _pick_ytdlp_vtt(video_id: str, temp_dir: str, priority: List[str]) -> Optional[Path]:
     """Return the best on-disk VTT match for video_id, preferring priority order."""
     matches = list(Path(temp_dir).glob(f"{video_id}*.vtt"))
@@ -669,7 +681,7 @@ def _fetch_transcript_ytdlp(
         f"https://www.youtube.com/watch?v={video_id}",
     ]
 
-    timeout = _TRANSCRIPT_FAST_TIMEOUT if fast_fail else _TRANSCRIPT_TIMEOUT
+    timeout = _transcript_fast_timeout() if fast_fail else _TRANSCRIPT_TIMEOUT
     attempts = 1 if fast_fail else _TRANSCRIPT_MAX_RETRIES + 1
     last_reason: Optional[str] = None
     for attempt in range(attempts):
@@ -679,6 +691,12 @@ def _fetch_transcript_ytdlp(
             last_reason = f"timed out after {timeout}s"
             _log(f"yt-dlp transcript timed out after {timeout}s for {video_id} "
                  f"(attempt {attempt + 1}/{attempts})")
+            # yt-dlp downloads requested languages sequentially. A timeout can
+            # therefore leave a complete first-choice VTT on disk; keep it
+            # instead of spending a ScrapeCreators fallback credit.
+            partial_vtt = _read_vtt(video_id, temp_dir)
+            if partial_vtt is not None:
+                return partial_vtt
             if attempt < attempts - 1:
                 time.sleep(_transcript_backoff(video_id, attempt))
                 continue
