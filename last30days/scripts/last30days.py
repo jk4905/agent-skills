@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# fmt: off
 # ruff: noqa: E402
 """last30days CLI."""
 
@@ -15,6 +16,7 @@ import signal
 import sqlite3
 import sys
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 MIN_PYTHON = (3, 12)
@@ -117,6 +119,61 @@ def resolve_requested_sources(args_search: str | None, config: dict) -> list[str
     return None
 
 
+def plan_has_explicit_trustpilot_domain(comp_plan: dict | None) -> bool:
+    """True when any --competitors-plan entry pins a trustpilot_domain."""
+    if not comp_plan:
+        return False
+    for entry in comp_plan.values():
+        if not isinstance(entry, dict):
+            continue
+        domain = entry.get("trustpilot_domain")
+        if isinstance(domain, str) and domain.strip():
+            return True
+    return False
+
+
+def activate_trustpilot_for_explicit_domain(
+    config: dict,
+    requested_sources: list[str] | None,
+    *,
+    reason: str,
+) -> list[str] | None:
+    """Activate the opt-in Trustpilot source when the user pinned a domain.
+
+    Passing ``--trustpilot-domain`` (or a plan-level ``trustpilot_domain``) is
+    unambiguous intent — silently ignoring it when Trustpilot is not in
+    ``INCLUDE_SOURCES`` / ``--search`` is the #873 failure mode. Auto-resolve
+    hints must not call this helper.
+
+    ``EXCLUDE_SOURCES=trustpilot`` still wins. Mutates ``config`` in place and
+    returns the (possibly extended) ``requested_sources`` list.
+    """
+    excluded = {
+        token.strip().lower()
+        for token in str(config.get("EXCLUDE_SOURCES") or "").split(",")
+        if token.strip()
+    }
+    if "trustpilot" in excluded:
+        sys.stderr.write(
+            f"[Trustpilot] {reason} ignored: trustpilot is in EXCLUDE_SOURCES\n"
+        )
+        return requested_sources
+
+    include = str(config.get("INCLUDE_SOURCES") or "")
+    tokens = [token.strip() for token in include.split(",") if token.strip()]
+    if "trustpilot" not in {token.lower() for token in tokens}:
+        tokens.append("trustpilot")
+        config["INCLUDE_SOURCES"] = ",".join(tokens)
+        sys.stderr.write(
+            f"[Trustpilot] {reason} activated trustpilot source "
+            "(add to INCLUDE_SOURCES permanently to skip this auto-enable)\n"
+        )
+
+    if requested_sources is not None and "trustpilot" not in requested_sources:
+        requested_sources = [*requested_sources, "trustpilot"]
+    return requested_sources
+
+
 def slugify(value: str, max_length: int = 180) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     if len(slug) > max_length:
@@ -167,6 +224,7 @@ def save_output(
     json_profile: str = "agent",
     register: str = "default",
     private: bool | None = None,
+    render_fn: Callable[[Path], str] | None = None,
 ) -> Path:
     from datetime import datetime
     path = Path(save_dir).expanduser().resolve()
@@ -182,21 +240,24 @@ def save_output(
         candidates.append(path / f"{slug}-{raw_label}{suffix_part}-{date_str}-{i}.{extension}")
     # Markdown saves keep the complete debug artifact. JSON and HTML preserve
     # their requested wire format so file extensions match their content.
-    if rendered_content is not None:
-        content = rendered_content
-    elif emit in {"json", "html"}:
-        content = emit_output(
-            report,
-            emit,
-            synthesis_md=synthesis_md,
-            json_profile=json_profile,
-            register=register,
-        )
-    else:
-        content = render.render_full(report)
+    # When render_fn is supplied, content is produced after O_EXCL allocates
+    # the candidate. This lets the footer cite the file actually written
+    # without racing a separate filesystem probe.
+    if render_fn is None:
+        if rendered_content is not None:
+            static_content = rendered_content
+        elif emit in {"json", "html"}:
+            static_content = emit_output(
+                report,
+                emit,
+                synthesis_md=synthesis_md,
+                json_profile=json_profile,
+                register=register,
+            )
+        else:
+            static_content = render.render_full(report)
     private_corpus = _report_has_private_corpus(report) or bool(private)
     _ensure_output_directory(path, private=private_corpus)
-    encoded = content.encode("utf-8")
     for candidate in candidates:
         try:
             fd = os.open(
@@ -206,8 +267,18 @@ def save_output(
             )
         except FileExistsError:
             continue
-        with os.fdopen(fd, "wb") as f:
-            f.write(encoded)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                content = render_fn(candidate) if render_fn is not None else static_content
+                f.write(content.encode("utf-8"))
+        except BaseException:
+            # Deferred rendering happens after the candidate is reserved. Do
+            # not leave an empty or partial report if rendering or writing fails.
+            try:
+                candidate.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
         if candidate.suffix.lower() == ".md":
             try:
                 from lib import library, library_index
@@ -651,7 +722,15 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Use web search to discover subreddits/handles before planning (for platforms without WebSearch)")
     parser.add_argument("--github-user", help="GitHub username for person-mode search (e.g., steipete)")
     parser.add_argument("--github-repo", help="Comma-separated owner/repo for project-mode search (e.g., openclaw/openclaw,paperclipai/paperclip)")
-    parser.add_argument("--trustpilot-domain", help="Trustpilot review-page domain for the topic (e.g., www.thriftbooks.com). Used verbatim and bypasses the brand-shape gate; find it with `trustpilot-pp-cli search '<name>'`.")
+    parser.add_argument(
+        "--trustpilot-domain",
+        help=(
+            "Trustpilot review-page domain for the topic (e.g., www.thriftbooks.com). "
+            "Used verbatim, bypasses the brand-shape gate, and auto-activates the "
+            "opt-in Trustpilot source for this run (unless EXCLUDE_SOURCES=trustpilot). "
+            "Find the domain with `trustpilot-pp-cli search '<name>'`."
+        ),
+    )
     parser.add_argument(
         "--competitors",
         nargs="?",
@@ -2200,6 +2279,32 @@ def _render_save_and_print(
         sys.stderr.flush()
     if args.save_dir:
         # Save the main topic's raw file (single-entity or comparison main).
+        # Bind the render to the path save_output actually allocates so the
+        # saved report and stdout agree even when collision fallback is used.
+        def _render_with_actual_path(actual_path: Path) -> str:
+            nonlocal rendered
+            display = compute_output_path_display(str(actual_path))
+            if entity_reports:
+                rendered = emit_comparison_output(
+                    entity_reports,
+                    args.emit,
+                    fun_level=fun_level,
+                    save_path=display,
+                    synthesis_md=synthesis_md,
+                    json_profile=args.json_profile,
+                )
+            else:
+                rendered = emit_output(
+                    report,
+                    args.emit,
+                    fun_level=fun_level,
+                    save_path=display,
+                    synthesis_md=synthesis_md,
+                    json_profile=args.json_profile,
+                    register=audience.name,
+                )
+            return rendered
+
         save_path = save_output(
             report,
             args.emit,
@@ -2207,10 +2312,10 @@ def _render_save_and_print(
             suffix=args.save_suffix or "",
             synthesis_md=synthesis_md,
             topic_override=comparison_topic(entity_reports) if is_comparison_html else None,
-            rendered_content=rendered if is_comparison_html else None,
             json_profile=args.json_profile,
             register=audience.name,
             private=private_saved_format,
+            render_fn=_render_with_actual_path,
         )
         if args.emit == "html":
             publish_companion_paths.append(save_path)
@@ -2987,6 +3092,18 @@ def _main(
         return hosted.run_hosted(topic, depth, **hosted_kwargs)
 
     requested_sources = resolve_requested_sources(args.search, config)
+    # Explicit --trustpilot-domain is user intent: activate the opt-in source
+    # before diagnose/run so the flag cannot silently no-op (#873). Auto-resolve
+    # hints are applied later and must not call this path.
+    cli_trustpilot_domain = (
+        args.trustpilot_domain.strip() if args.trustpilot_domain else ""
+    )
+    if cli_trustpilot_domain:
+        requested_sources = activate_trustpilot_for_explicit_domain(
+            config,
+            requested_sources,
+            reason=f"--trustpilot-domain={cli_trustpilot_domain}",
+        )
     diag = pipeline.diagnose(config, requested_sources, safe=args.diagnose)
 
     if args.diagnose:
@@ -3085,6 +3202,12 @@ def _main(
                 # and burning a paid run the user did not ask for. Mirrors the
                 # --plan file-read branch above and parse_competitors_plan.
                 raise SystemExit(2)
+            from lib import planner as _plan_validator
+            try:
+                _plan_validator.validate_external_plan(external_plan)
+            except ValueError as exc:
+                sys.stderr.write(f"[Planner] Invalid --plan schema: {exc}.\n")
+                raise SystemExit(2)
 
         # Auto-resolve: use web search to discover subreddits/handles before planning.
         # This is the engine-side equivalent of SKILL.md Steps 0.55/0.75 for platforms
@@ -3127,6 +3250,18 @@ def _main(
         github_repos = [r.strip() for r in args.github_repo.split(",") if r.strip() and "/" in r.strip()] if args.github_repo else None
         trustpilot_domain = args.trustpilot_domain.strip() if args.trustpilot_domain else None
 
+        comp_enabled, comp_count, comp_explicit = resolve_competitors_args(args)
+        comp_plan = parse_competitors_plan(args.competitors_plan)
+
+        # Plan-level trustpilot_domain pins are the same user intent as the CLI
+        # flag (already activated above). Auto-resolve hints must not activate.
+        if plan_has_explicit_trustpilot_domain(comp_plan):
+            requested_sources = activate_trustpilot_for_explicit_domain(
+                config,
+                requested_sources,
+                reason="competitors-plan trustpilot_domain",
+            )
+
         # Only canonicalize when repos came from a user-supplied --github-repo flag.
         # When repos_from_auto_resolve is True, auto_resolve already ran
         # canonicalize_github_repos(cap=5) and ranked by relevance; re-running here
@@ -3151,9 +3286,6 @@ def _main(
             include = config.get("INCLUDE_SOURCES") or ""
             if "perplexity" not in include.lower():
                 config["INCLUDE_SOURCES"] = f"{include},perplexity" if include else "perplexity"
-
-        comp_enabled, comp_count, comp_explicit = resolve_competitors_args(args)
-        comp_plan = parse_competitors_plan(args.competitors_plan)
 
         # Polymarket disambiguation: if user passed --polymarket-keywords,
         # store on config so the polymarket adapter can filter matches.
