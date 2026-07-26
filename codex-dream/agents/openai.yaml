@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Dream"
+  short_description: "回顾近期工作历史，发现并封装重复手动工作流资产为可复用技能"
+  default_prompt: "Use $codex-dream to review my recent work history and create only high-confidence missing workflow assets."

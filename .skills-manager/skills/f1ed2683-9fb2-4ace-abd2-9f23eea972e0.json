@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "f1ed2683-9fb2-4ace-abd2-9f23eea972e0",
+  "path": "codex-dream",
+  "path_key": "codex-dream",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "import",
+    "ref": null,
+    "subpath": null,
+    "branch": null
+  }
+}
