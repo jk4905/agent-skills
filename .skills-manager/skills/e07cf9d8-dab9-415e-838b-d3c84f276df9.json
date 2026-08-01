@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "e07cf9d8-dab9-415e-838b-d3c84f276df9",
+  "path": "database-standards",
+  "path_key": "database-standards",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "local",
+    "ref": null,
+    "subpath": null,
+    "branch": null
+  }
+}

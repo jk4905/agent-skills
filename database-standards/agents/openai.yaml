@@ -1,0 +1,4 @@
+interface:
+  display_name: "数据库规范"
+  short_description: "按团队规范审核 MySQL DDL 与 Redis 设计"
+  default_prompt: "使用 $database-standards 按团队数据库规范审核 MySQL 审批 DDL 或检查 Redis 设计。"
