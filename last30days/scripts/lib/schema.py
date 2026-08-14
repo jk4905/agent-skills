@@ -39,7 +39,7 @@ class ProviderRuntime:
     reasoning_provider: Literal["gemini", "openai", "xai", "local"]
     planner_model: str
     rerank_model: str
-    x_search_backend: Literal["xai", "bird"] | None = None
+    x_search_backend: Literal["xai", "grok", "bird", "xurl", "xquik"] | None = None
 
 
 @dataclass(frozen=True)
@@ -574,6 +574,38 @@ def candidate_sources(candidate: Candidate) -> list[str]:
 def candidate_source_label(candidate: Candidate) -> str:
     sources = candidate_sources(candidate)
     return ", ".join(sources) if sources else "unknown"
+
+
+def candidate_out_of_window(candidate: Candidate) -> bool:
+    """True when every dated item behind this candidate falls outside the window.
+
+    Window membership is derived from the actual ``published_at`` date compared
+    to the run's ``range_from``/``range_to`` (stored in candidate.metadata by
+    fusion.weighted_rrf). Some adapters provide ``date_confidence="high"`` for
+    old dates, so relying solely on adapter-provided confidence is insufficient.
+
+    Candidates with no dated item at all are not treated as out of window — an
+    unknown date is a coverage gap, not a stale item.
+    """
+    dated = [item for item in candidate.source_items if item.published_at]
+    if not dated:
+        return False
+
+    range_from = candidate.metadata.get("range_from")
+    range_to = candidate.metadata.get("range_to")
+    if range_from and range_to:
+        try:
+            start = datetime.fromisoformat(range_from).date()
+            end = datetime.fromisoformat(range_to).date()
+            for item in dated:
+                item_date = datetime.fromisoformat(item.published_at[:10]).date()
+                if start <= item_date <= end:
+                    return False
+            return True
+        except (ValueError, TypeError):
+            pass
+
+    return all(item.date_confidence != "high" for item in dated)
 
 
 def candidate_best_published_at(candidate: Candidate) -> str | None:
