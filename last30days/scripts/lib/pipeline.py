@@ -68,6 +68,7 @@ from . import (
     topic_shape,
     truthsocial,
     trustpilot,
+    x_judge,
     xai_x,
     xiaohongshu_api,
     xquik,
@@ -474,16 +475,12 @@ def _fetch_discovery_source(
             ]
         return items, result.get("error")
     if source == "x":
-        subquery = schema.SubQuery(
-            label="discovery-listings",
-            search_query=plan.domain,
-            ranking_query=f"What is accelerating in {plan.domain}?",
-            sources=["x"],
-        )
+        # Discovery uses domain directly as query (no planner search_query)
+        query = plan.domain
         last_error = ""
         for backend in env.x_backend_chain(config):
             items, error = _fetch_x_backend(
-                backend, subquery, from_date, to_date, depth, config,
+                backend, query, from_date, to_date, depth, config,
             )
             if items:
                 # Earlier failed-over backends' errors are observability, not
@@ -1955,10 +1952,9 @@ def run(
         youtube_yt.reset_search_cache()
     settings = _resolve_depth_settings(depth, config)
     requested_sources = normalize_requested_sources(requested_sources)
-    # Wall-clock origin for budget-aware enrichment lanes. Retrieval can eat
-    # most of the foreground contract before enrichment starts, so a lane that
-    # sizes its deadline against a constant alone can push a run past the
-    # contract; the amazon review lane clamps against what is actually left.
+    # Wall-clock origin for budget-aware enrichment lanes. Amazon review
+    # enrichment starts at search time (inside _retrieve_stream_impl) so it
+    # overlaps other sources instead of waiting for them all to finish.
     run_started = time.monotonic()
     from_date, to_date = dates.get_date_range(lookback_days, as_of_date=as_of_date)
     resolved_corpus_dirs = corpus.resolve_directories(
@@ -2327,6 +2323,7 @@ def run(
                         ig_creators=ig_creators,
                         trustpilot_domain=trustpilot_domain,
                         trustpilot_domain_is_hint=trustpilot_domain_is_hint,
+                        run_started=run_started,
                     )
                 ] = (subquery, source)
 
@@ -2361,6 +2358,7 @@ def run(
                             ig_creators=ig_creators,
                             trustpilot_domain=trustpilot_domain,
                             trustpilot_domain_is_hint=trustpilot_domain_is_hint,
+                            run_started=run_started,
                         )
                     except Exception as retry_exc:
                         detail = f"{exc} (retried once, still failed: {retry_exc})"
@@ -2444,6 +2442,7 @@ def run(
         tiktok_creators=tiktok_creators,
         ig_creators=ig_creators,
         first_party_handles=explicit_first_party,
+        run_started=run_started,
     )
 
     # Reclassify partial failures as DEGRADED instead of silently dropping them.
@@ -2954,9 +2953,11 @@ def _finalize_items_by_source(
                 digg.enrich_source_items(items, top_k=3)
                 http.fixture_source_record(enrichment_request, schema.to_dict(items))
         if source == "amazon" and items and not mock:
-            # Same budget-at-the-survivors principle: review pulls are the
-            # expensive half of this lane (one credit each, and the slow
-            # half by wall clock), so they go to the products dedupe kept.
+            # Attach-if-missing: review enrichment now runs at search time in
+            # _retrieve_stream_impl, so items arriving here should already have
+            # top_comments. enrich_source_items no-ops when top_comments is set.
+            # This path handles fixture replay and any edge cases where retrieve
+            # didn't enrich (e.g., run_started was not passed).
             matched, replayed = http.fixture_source_replay(enrichment_request)
             if matched:
                 items = _merge_replayed_enrichment(items, replayed)
@@ -2966,9 +2967,6 @@ def _finalize_items_by_source(
                     depth=depth,
                     config=config,
                     keyword=str((config or {}).get("_amazon_query") or "").strip() or topic,
-                    # Retrieval time already spent, so the lane sizes its
-                    # deadline against what remains of the 300s contract
-                    # rather than always claiming its full constant.
                     elapsed=elapsed,
                 )
                 http.fixture_source_record(enrichment_request, schema.to_dict(items))
@@ -3134,7 +3132,16 @@ def _classify_source_failure(exc: Exception) -> tuple[schema.RunOutcomeState, bo
         return schema.SKIPPED_UNCONFIGURED, False
     if any(
         marker in lowered
-        for marker in ("cookie expired", "expired cookie", "login required", "not logged in")
+        for marker in (
+            "cookie expired",
+            "expired cookie",
+            "login required",
+            "not logged in",
+            "grok session expired",
+            "session expired or was revoked",
+            "invalid_grant",
+            "not signed in",
+        )
     ):
         return schema.AUTH_FAILED, True
     state = getattr(exc, "outcome_state", None) or http.classify_failure(
@@ -3489,43 +3496,48 @@ def _run_supplemental_searches(
         # lane: the point is to bound the total, not each part.
         lane_deadline = time.monotonic() + grok_x.LANE_BUDGET_SECONDS
 
-        def _from_lane(hs: list, count: int) -> list:
-            return grok_x.search_handles(
+        def _from_lane(hs: list, count: int, and_topic: bool = False) -> tuple[list, bool]:
+            items, revoked = grok_x.search_handles(
                 hs, topic, from_date, to_date, count_per=count,
-                deadline=lane_deadline,
+                deadline=lane_deadline, and_topic=and_topic,
             )
+            return items, revoked
 
-        def _about_lane(hs: list, count: int) -> list:
-            return grok_x.search_mentions(
+        def _about_lane(hs: list, count: int) -> tuple[list, bool]:
+            items, revoked = grok_x.search_mentions(
                 hs, from_date, to_date, topic=topic, count_per=count,
                 deadline=lane_deadline,
             )
+            return items, revoked
 
-        def _name_lane(hs: list, count: int) -> list:
+        def _name_lane(hs: list, count: int) -> tuple[list, bool]:
             # Use the resolved entity name, not the raw topic. Phrase-quoting
             # the whole topic ("Peter Steinberger steipete") matches nothing on
             # X; the subject's name is what other people actually write.
             subject = _name_lane_subject(topic)
             if not subject.strip():
-                return []
-            return grok_x.search_name(
+                return [], False
+            items, revoked = grok_x.search_name(
                 subject, from_date, to_date, exclude_handles=hs, count_per=count,
                 deadline=lane_deadline,
             )
+            return items, revoked
     elif primary == "bird":
-        def _from_lane(hs: list, count: int) -> list:
-            return bird_x.search_handles(hs, topic, from_date, count_per=count)
+        def _from_lane(hs: list, count: int, and_topic: bool = False) -> tuple[list, bool]:
+            # bird_x.search_handles doesn't support and_topic yet
+            return bird_x.search_handles(hs, topic, from_date, count_per=count), False
 
-        def _about_lane(hs: list, count: int) -> list:
-            return bird_x.search_mentions(hs, from_date, count_per=count)
+        def _about_lane(hs: list, count: int) -> tuple[list, bool]:
+            return bird_x.search_mentions(hs, from_date, count_per=count), False
     elif primary == "xquik":
         xquik_token = env.get_xquik_token(config)
 
-        def _from_lane(hs: list, count: int) -> list:
-            return xquik.search_handles(hs, topic, from_date, to_date, count_per=count, token=xquik_token)
+        def _from_lane(hs: list, count: int, and_topic: bool = False) -> tuple[list, bool]:
+            # xquik.search_handles doesn't support and_topic yet
+            return xquik.search_handles(hs, topic, from_date, to_date, count_per=count, token=xquik_token), False
 
-        def _about_lane(hs: list, count: int) -> list:
-            return xquik.search_mentions(hs, from_date, to_date, topic=topic, count_per=count, token=xquik_token)
+        def _about_lane(hs: list, count: int) -> tuple[list, bool]:
+            return xquik.search_mentions(hs, from_date, to_date, topic=topic, count_per=count, token=xquik_token), False
     else:
         return  # primary X backend has no handle-lane support (xai/xurl) or none configured
 
@@ -3544,29 +3556,86 @@ def _run_supplemental_searches(
     ranking_query = plan.subqueries[0].ranking_query if plan.subqueries else topic
     primary_label = plan.subqueries[0].label if plan.subqueries else "primary"
 
+    # Split FROM promotion: determine which handles get FROM lane and how.
+    # - Primary explicit handle (--x-handle): always FROM, no AND topic, full weight
+    # - x_related handles: searched separately with lower weight (0.3), kept in
+    #   related_handles variable for the supplemental-related section below
+    # - Extracted handles: FROM only if ≥2 on-topic hits AND ratio ≥0.5,
+    #   and those pulls DO AND the topic (from:handle Rome)
+    primary_explicit = [x_handle] if x_handle else []
+
+    explicit_promotable, extracted_promotable = x_judge.promotable_handles(
+        x_dicts,  # Phase 1 X items for judging
+        topic,
+        handles,  # entity_extract handles
+        explicit_handles=primary_explicit,
+        ranking_query=ranking_query,
+    )
+
+    # All promotable handles for ABOUT and NAME lanes (primary only, not related)
+    all_promotable = list(set(explicit_promotable + extracted_promotable))
+
     # Search primary handles (full weight): FROM lane (their own tweets) +
     # ABOUT lane (tweets mentioning them). Both engagement-weighted and deduped
     # by URL at normalize time.
-    if handles:
+    any_revoked = False  # Track auth revocation across lanes
+    if all_promotable:
         # Independent try/except per lane so a failure in one does not discard
         # the other's already-computed results.
         from_items: list = []
         about_items: list = []
+        about_revoked = False
+        name_revoked = False
+
+        # FROM lane: explicit handles without AND topic (person posts omit their own name)
+        if explicit_promotable:
+            try:
+                explicit_items, explicit_revoked = _from_lane(explicit_promotable, FROM_LANE_COUNT_PER, and_topic=False)
+                from_items.extend(explicit_items)
+                if explicit_revoked:
+                    any_revoked = True
+                    bundle.record_failure(
+                        x_slug, schema.AUTH_FAILED,
+                        "Phase 2 FROM-lane (explicit): grok session expired or was revoked",
+                        attempted=True,
+                    )
+            except Exception as exc:
+                print(f"[Pipeline] Phase 2 FROM-lane (explicit) failed: {exc}", file=sys.stderr)
+                state, attempted = _classify_source_failure(exc)
+                bundle.record_failure(
+                    x_slug, state, f"Phase 2 FROM-lane (explicit): {exc}", attempted=attempted,
+                )
+
+        # FROM lane: extracted handles WITH AND topic (from:handle Rome)
+        if extracted_promotable:
+            try:
+                extracted_items, extracted_revoked = _from_lane(extracted_promotable, FROM_LANE_COUNT_PER, and_topic=True)
+                from_items.extend(extracted_items)
+                if extracted_revoked:
+                    any_revoked = True
+                    bundle.record_failure(
+                        x_slug, schema.AUTH_FAILED,
+                        "Phase 2 FROM-lane (extracted): grok session expired or was revoked",
+                        attempted=True,
+                    )
+            except Exception as exc:
+                print(f"[Pipeline] Phase 2 FROM-lane (extracted) failed: {exc}", file=sys.stderr)
+                state, attempted = _classify_source_failure(exc)
+                bundle.record_failure(
+                    x_slug, state, f"Phase 2 FROM-lane (extracted): {exc}", attempted=attempted,
+                )
+                if not bundle.items_by_source.get(x_slug):
+                    bundle.errors_by_source[x_slug] = f"Phase 2 FROM-lane: {exc}"
+
         try:
-            from_items = _from_lane(handles, FROM_LANE_COUNT_PER)
-        except Exception as exc:
-            print(f"[Pipeline] Phase 2 FROM-lane search failed: {exc}", file=sys.stderr)
-            state, attempted = _classify_source_failure(exc)
-            bundle.record_failure(
-                x_slug,
-                state,
-                f"Phase 2 FROM-lane: {exc}",
-                attempted=attempted,
-            )
-            if not bundle.items_by_source.get(x_slug):
-                bundle.errors_by_source[x_slug] = f"Phase 2 FROM-lane: {exc}"
-        try:
-            about_items = _about_lane(handles, MENTION_LANE_COUNT_PER)
+            about_items, about_revoked = _about_lane(all_promotable, MENTION_LANE_COUNT_PER)
+            if about_revoked:
+                any_revoked = True
+                bundle.record_failure(
+                    x_slug, schema.AUTH_FAILED,
+                    "Phase 2 ABOUT-lane: grok session expired or was revoked",
+                    attempted=True,
+                )
         except Exception as exc:
             print(f"[Pipeline] Phase 2 ABOUT-lane search failed: {exc}", file=sys.stderr)
             state, attempted = _classify_source_failure(exc)
@@ -3579,7 +3648,14 @@ def _run_supplemental_searches(
         name_items: list = []
         if _name_lane is not None:
             try:
-                name_items = _name_lane(handles, MENTION_LANE_COUNT_PER)
+                name_items, name_revoked = _name_lane(all_promotable, MENTION_LANE_COUNT_PER)
+                if name_revoked:
+                    any_revoked = True
+                    bundle.record_failure(
+                        x_slug, schema.AUTH_FAILED,
+                        "Phase 2 NAME-lane: grok session expired or was revoked",
+                        attempted=True,
+                    )
             except Exception as exc:
                 print(f"[Pipeline] Phase 2 NAME-lane search failed: {exc}", file=sys.stderr)
                 state, attempted = _classify_source_failure(exc)
@@ -3613,11 +3689,17 @@ def _run_supplemental_searches(
                 )
 
         if raw_items:
+            # First-party handles: only primary explicit handle, not promoted commentators
+            # (first-party exempts from relevance floor; granting to commentators
+            # would let junk become un-prunable)
+            first_party_for_normalize = list(set(
+                h.lower().lstrip("@") for h in primary_explicit if h
+            ))
             normalized = _normalize_score_dedupe(
                 x_slug, raw_items, from_date, to_date,
                 freshness_mode=plan.freshness_mode,
                 ranking_query=ranking_query,
-                first_party_handles=handles,
+                first_party_handles=first_party_for_normalize,
             )
             # Deduplicate against Phase 1 URLs
             normalized = [item for item in normalized if item.url not in existing_urls]
@@ -3629,9 +3711,17 @@ def _run_supplemental_searches(
                         existing_urls.add(item.url)
 
     # Search related handles with lower weight (0.3)
+    # Related handles are explicit (--x-related), so FROM without AND topic.
     if related_handles:
         try:
-            raw_items = _from_lane(related_handles, RELATED_HANDLE_COUNT_PER)
+            raw_items, rel_revoked = _from_lane(related_handles, RELATED_HANDLE_COUNT_PER, and_topic=False)
+            if rel_revoked:
+                any_revoked = True
+                bundle.record_failure(
+                    x_slug, schema.AUTH_FAILED,
+                    "Phase 2 related handle search: grok session expired or was revoked",
+                    attempted=True,
+                )
         except Exception as exc:
             print(f"[Pipeline] Phase 2 related handle search failed: {exc}", file=sys.stderr)
             state, attempted = _classify_source_failure(exc)
@@ -3689,6 +3779,7 @@ def _retry_thin_sources(
     tiktok_creators: list[str] | None = None,
     ig_creators: list[str] | None = None,
     first_party_handles: Iterable[str] | None = None,
+    run_started: float | None = None,
 ) -> None:
     """Retry sources with thin results using simplified core subject query."""
     if depth == "quick":
@@ -3755,6 +3846,11 @@ def _retry_thin_sources(
             tiktok_hashtags=tiktok_hashtags,
             tiktok_creators=tiktok_creators,
             ig_creators=ig_creators,
+            run_started=run_started,
+            # Skip Amazon review enrichment here to avoid duplicate Bright Data
+            # pulls for ASINs already enriched in Phase 1. Finalize will enrich
+            # any genuinely new products that weren't in Phase 1.
+            skip_amazon_enrichment=True,
         )
         outcome_note = artifact.get("_source_outcome") if isinstance(artifact, dict) else None
         normalized = _normalize_score_dedupe(
@@ -3809,20 +3905,30 @@ def _retry_thin_sources(
                 )
 
 
-def _fetch_x_backend(backend, subquery, from_date, to_date, depth, config):
+def _fetch_x_backend(backend, query, from_date, to_date, depth, config):
     """Fetch X items from a single backend. Returns (items, error_str).
 
     Backends are tried in priority order by the caller (env.x_backend_chain);
     a non-empty error_str signals a hard failure (auth/payment/etc.) so the
     caller can fail over to the next backend or surface the error honestly.
+
+    For grok, auth_revoked signals mid-run session revocation: the error
+    string includes "grok session expired" so _classify_source_failure maps
+    it to AUTH_FAILED with a proper fix hint, distinct from "never signed in".
+
+    The ``query`` parameter is the compiled search query - typically
+    ``raw_topic or topic`` (like Reddit/YouTube), NOT the planner's
+    ``search_query`` which may contain operator strings like "Rome Italy".
     """
-    query = subquery.search_query
     if backend == "bird":
         result = bird_x.search_x(query, from_date, to_date, depth=depth)
         items = bird_x.parse_bird_response(result, query=query)
     elif backend == "grok":
         result = grok_x.search_x(query, from_date, to_date, depth=depth)
         items = result.get("items", []) if isinstance(result, dict) else []
+        if isinstance(result, dict) and result.get("auth_revoked"):
+            err = result.get("error") or "grok session expired or was revoked"
+            return items, f"grok: {err}"
     elif backend == "xai":
         model = config.get("LAST30DAYS_X_MODEL") or config.get("XAI_MODEL_PIN") or providers.XAI_DEFAULT
         result = xai_x.search_x(config["XAI_API_KEY"], model, query, from_date, to_date, depth=depth)
@@ -3864,6 +3970,7 @@ def _merge_reddit_items(free: list[dict], sc: list[dict]) -> list[dict]:
 
 def _retrieve_stream(*args, **kwargs) -> tuple[list[dict], dict]:
     """Run one stream and retain HTTP failures swallowed by source adapters."""
+    # run_started is passed through but not used here; it goes to _retrieve_stream_impl
     source = str(kwargs.get("source") or "")
     fixture_request = {
         "source": source,
@@ -3934,6 +4041,8 @@ def _retrieve_stream_impl(
     ig_creators: list[str] | None = None,
     trustpilot_domain: str | None = None,
     trustpilot_domain_is_hint: bool = False,
+    run_started: float | None = None,
+    skip_amazon_enrichment: bool = False,
 ) -> tuple[list[dict], dict]:
     # Early exit if source was rate-limited by a sibling future
     if rate_limited_sources is not None and source in rate_limited_sources:
@@ -4082,6 +4191,11 @@ def _retrieve_stream_impl(
             )
         return merged, {}
     if source == "x":
+        # Compile X query from raw_topic (like Reddit/YouTube), not planner's
+        # search_query which may contain operator strings like "Rome Italy".
+        x_query = raw_topic or topic or subquery.search_query
+        ranking_query = subquery.ranking_query
+
         # One X source, an ordered chain of interchangeable backends. Try the
         # primary; fall through to the next only if it returns nothing or errors.
         chain = env.x_backend_chain(config)
@@ -4093,33 +4207,149 @@ def _retrieve_stream_impl(
         if not chain:
             raise RuntimeError("No X backend is available.")
         last_error = ""
+        items = []
+        used_backend = None
         for i, backend in enumerate(chain):
-            items, err = _fetch_x_backend(backend, subquery, from_date, to_date, depth, config)
+            items, err = _fetch_x_backend(backend, x_query, from_date, to_date, depth, config)
             if items:
                 if i > 0:
                     print(f"[X] primary backend(s) returned nothing; used fallback '{backend}'", file=sys.stderr)
+                # Check for auth errors before proceeding to judge-retry
                 if last_error:
-                    state = (
-                        bird_x.classify_run_failure(last_error)
-                        if last_error.startswith("bird:")
-                        else http.classify_failure(message=last_error)
+                    # Fallback succeeded after earlier backend failed. Classify
+                    # the original error: if it was AUTH_FAILED (grok revoked),
+                    # preserve that state so user gets re-login guidance.
+                    prior_state = http.classify_failure(message=last_error)
+                    if prior_state == schema.AUTH_FAILED:
+                        # Keep AUTH_FAILED visible so host shows re-login hint
+                        return items, _outcome_artifact(
+                            schema.AUTH_FAILED,
+                            f"X served via {backend} after {last_error}; re-login needed for primary backend",
+                        )
+                    # Prior error was non-auth. Check if *current* backend also
+                    # reported an error (e.g., grok returned items + revocation).
+                    if err:
+                        current_state = http.classify_failure(message=err)
+                        if current_state == schema.AUTH_FAILED:
+                            return items, _outcome_artifact(
+                                schema.AUTH_FAILED,
+                                f"X served {len(items)} items via {backend} but also errored: {err}; re-login needed",
+                            )
+                    # Non-auth prior error, no current auth error → fallback OK
+                    return items, _outcome_artifact(
+                        health.OK,
+                        f"X served via {backend} after {last_error}",
                     )
+                if err:
+                    # Mixed result: backend returned items BUT also hit an error
+                    # (e.g., grok got some posts then auth was revoked mid-fanout).
+                    # Surface the error so the user gets re-login guidance.
+                    state = http.classify_failure(message=err)
                     return items, _outcome_artifact(
                         state,
-                        f"X fallback '{backend}' returned {len(items)} items after {last_error}",
+                        f"X returned {len(items)} items but also errored: {err}",
                     )
-                return items, {}
+                # No auth issues and no prior errors - proceed to judge-retry
+                used_backend = backend
+                break
             if err:
                 last_error = f"{backend}: {err}"
                 print(f"[X] backend '{backend}' failed ({err}); trying next", file=sys.stderr)
-        if last_error:
+
+        if not items and last_error:
             state = (
                 bird_x.classify_run_failure(last_error)
                 if last_error.startswith("bird:")
                 else http.classify_failure(message=last_error)
             )
             raise SourceRunError(f"All X backends failed — {last_error}", state)
-        return [], {}
+
+        # Retrieve-judge-retry: judge corpus and retry if off-topic flood.
+        # Skip retry on quick/mock (same as Phase 2).
+        artifact = {}
+        if items and depth != "quick" and not mock:
+            items_for_judge = [
+                {"author_handle": it.get("author_handle", ""), "text": it.get("text", "")}
+                for it in items
+            ]
+            if x_judge.should_retry_x_search(items_for_judge, x_query, ranking_query=ranking_query, depth=depth):
+                # Retry with cleaned query (1 retry, ≤2 extra grok calls)
+                # Strip noise words but preserve all significant terms to avoid
+                # losing disambiguating terms (e.g., "react server components")
+                core_tokens = query.extract_core_subject(x_query)
+                retry_query = core_tokens or x_query
+                print(f"[X] corpus off-topic; retrying with '{retry_query}'", file=sys.stderr)
+
+                if used_backend:
+                    retry_items, retry_err = _fetch_x_backend(
+                        used_backend, retry_query, from_date, to_date, depth, config
+                    )
+                    if retry_items:
+                        # Judge retry corpus
+                        retry_for_judge = [
+                            {"author_handle": it.get("author_handle", ""), "text": it.get("text", "")}
+                            for it in retry_items
+                        ]
+                        retry_judgment = x_judge.judge_x_corpus(
+                            retry_for_judge, x_query, ranking_query=ranking_query
+                        )
+                        orig_judgment = x_judge.judge_x_corpus(
+                            items_for_judge, x_query, ranking_query=ranking_query
+                        )
+                        # Use retry if better on-topic ratio
+                        if retry_judgment["on_topic_ratio"] > orig_judgment["on_topic_ratio"]:
+                            print(
+                                f"[X] retry improved on-topic ratio: "
+                                f"{orig_judgment['on_topic_ratio']:.0%} -> "
+                                f"{retry_judgment['on_topic_ratio']:.0%}",
+                                file=sys.stderr,
+                            )
+                            items = retry_items
+
+            # Prune off-topic items before the pool. Eight on-topic → ok with 8.
+            # Zero on-topic after retry → no-results, not ok with 40 junk.
+            # Only prune items that have text to judge; items without text pass through.
+            original_count = len(items)
+            items_with_text = [(i, it) for i, it in enumerate(items) if it.get("text", "").strip()]
+
+            if items_with_text:
+                items_for_prune = [
+                    {"author_handle": it.get("author_handle", ""), "text": it.get("text", "")}
+                    for _, it in items_with_text
+                ]
+                judgment = x_judge.judge_x_corpus(
+                    items_for_prune, x_query, ranking_query=ranking_query
+                )
+                # Build set of indices for on-topic items
+                on_topic_indices = set()
+                for (orig_idx, _), pruned_item in zip(items_with_text, items_for_prune):
+                    if pruned_item in judgment["on_topic_items"]:
+                        on_topic_indices.add(orig_idx)
+
+                # Keep items that are on-topic OR have no text (can't judge)
+                items = [
+                    it for i, it in enumerate(items)
+                    if i in on_topic_indices or not it.get("text", "").strip()
+                ]
+
+                # Record warning if significant pruning occurred (artifact, not failure)
+                if len(items) < original_count:
+                    pruned = original_count - len(items)
+                    artifact.setdefault("_warnings", []).append(
+                        f"X: pruned {pruned} off-topic items; {len(items)} on-topic remain"
+                    )
+
+        if last_error and items:
+            state = (
+                bird_x.classify_run_failure(last_error)
+                if last_error.startswith("bird:")
+                else http.classify_failure(message=last_error)
+            )
+            return items, _outcome_artifact(
+                state,
+                f"X fallback '{used_backend}' returned {len(items)} items after {last_error}",
+            )
+        return items, artifact
     if source == "youtube":
         # Use raw_topic so expand_youtube_queries() generates diverse variants
         # from the original user topic, not the planner's narrowed search_query.
@@ -4285,18 +4515,47 @@ def _retrieve_stream_impl(
         # The search keyword is model-supplied and may differ from the topic
         # ("Matt Van Horn" searches "June Oven"), so it keys off the stable
         # research topic rather than the narrowed per-subquery search_query.
-        # Review enrichment is deferred to _finalize_items_by_source so the
-        # credit budget lands on products that survive dedupe.
         keyword = (
             str((config or {}).get("_amazon_query") or "").strip()
             or raw_topic or topic or subquery.search_query
         )
         domain = str((config or {}).get("LAST30DAYS_AMAZON_DOMAIN") or amazon.DEFAULT_DOMAIN)
         result = amazon.search_products(keyword, domain=domain, config=config)
-        return (
-            amazon.parse_search_response(result, keyword, domain=domain),
-            _result_outcome_artifact(source, result),
+        products = amazon.parse_search_response(result, keyword, domain=domain)
+        artifact = _result_outcome_artifact(source, result)
+
+        # Skip enrichment when called from thin retry (_retry_thin_sources) to
+        # avoid duplicate Bright Data pulls for ASINs already enriched in Phase 1.
+        # Finalize will enrich any NEW products (enrich_source_items no-ops when
+        # top_comments is already set, so duplicates get skipped there too).
+        if skip_amazon_enrichment:
+            return products, artifact
+
+        # Start review enrichment now, while other sources are still running.
+        # Elapsed is measured from run_started so multi-source runs that finish
+        # search quickly (30-90s) still have 190-250s of budget (clamped to 180).
+        # This replaces the old deferred-to-finalize path which left only crumbs
+        # (e.g. 11s) after long retrieval phases.
+        elapsed = time.monotonic() - run_started if run_started else 0.0
+        enriched, review_status = amazon.enrich_with_reviews(
+            products,
+            depth=depth,
+            config=config,
+            elapsed=elapsed,
+            keyword=keyword,
         )
+
+        # Record PARTIAL status if review lane was skipped or all pulls dropped
+        if review_status:
+            artifact = artifact or {}
+            artifact = dict(artifact) if artifact else {}
+            artifact["_source_outcome"] = {
+                "state": schema.PARTIAL,
+                "detail": review_status,
+                "attempted": True,
+            }
+
+        return enriched, artifact
     if source == "bluesky":
         result = bluesky.search_bluesky(subquery.search_query, from_date, to_date, depth=depth, config=config)
         return bluesky.parse_bluesky_response(result), _result_outcome_artifact(source, result)
