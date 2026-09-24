@@ -1,16 +1,13 @@
 {
   "schema_version": 1,
   "scenario_id": "2fd4a4b0-0e03-4153-ae79-4f969ccb2098",
-  "skill_id": "8ea0f40a-66c0-44be-a23f-dfdc8904634b",
-  "sort_order": 31,
+  "skill_id": "205faccc-fed8-4cb3-a7d5-6da4e1618c4a",
+  "sort_order": 1,
   "tools": {
     "antigravity": true,
     "claude_code": true,
     "codex": true,
     "cursor": true,
-    "deepseek_harness": true,
-    "gemini_cli": true,
-    "github_copilot": true,
-    "hermes": true
+    "gemini_cli": true
   }
 }
