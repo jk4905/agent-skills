@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "2568b3a7-2f56-4c4c-a28a-2fe12955671a",
+  "path": "design-mobile-apps",
+  "path_key": "design-mobile-apps",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "designed-by-ai/skills/design-mobile-apps",
+    "subpath": "skills/design-mobile-apps",
+    "branch": null
+  }
+}
