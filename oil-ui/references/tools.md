@@ -34,7 +34,7 @@ node <skill>/scripts/shoot.mjs <页面地址、HTML 文件或候选目录> [选�
 | 看清一段过渡 | 录屏时加 `--frames 8`，另出逐帧标时间的序列图 |
 | 把几张图拼成一张对比图，不需要页面 | `--stitch a.png --label 修改前 --stitch b.png --label 修改后` |
 
-状态靠地址参数进入，所以页面要能用 `?state=<名字>` 直接打开每个状态。其余选项、选择器和动作的写法、输出文件和 `report.json` 的结构：运行 `node <skill>/scripts/shoot.mjs --help`。拿不准写法时先加 `--dry-run` 检查，不会启动浏览器。超时会自动放宽时限重跑一次，仍失败时照报错里的命令重跑。
+状态可以靠地址参数直接进入，也可以从正在运行的服务地址开始操作到目标状态。地址参数是最省事的方式：页面能用 `?state=<名字>` 打开时直接传它；需要真实操作时传服务地址，再用 `--steps "click .open; fill #name \"内容\"; drag .card 120 0"` 到达状态。其余选项、选择器和动作的写法、输出文件和 `report.json` 的结构：运行 `node <skill>/scripts/shoot.mjs --help`。拿不准写法时先加 `--dry-run` 检查，不会启动浏览器。超时会自动放宽时限重跑一次，仍失败时照报错里的命令重跑。
 
 ### 检索和下载真实素材
 
@@ -72,4 +72,4 @@ node <skill>/scripts/curate-media.mjs fetch T2 --maps all --resolution 1k --dir 
 
 方向探索阶段的首屏不做交互，用不到这一节；选定方向后做完整页面时再用。存量项目照用项目自己的技术栈。
 
-一个组件或一个页面只写一个文件，用地址参数切换状态，不要每个状态复制一份。颜色、字号、间距、圆角先定成十来个 CSS 变量，后面一律引用变量，不引入需要构建的工具。表单、切换、展开这类状态用 Alpine.js 写在 HTML 属性上：把 `<skill>/assets/vendor/alpine.min.js` 复制到任务目录的 `vendor/` 再引用，状态集中在一个 `x-data` 里，初始状态读地址参数。手势跟手、物理模拟、Canvas 和 WebGL 绘制放进单独的 JS 模块，每帧更新的数据不放进 Alpine 的状态。
+交付一个入口 HTML，用地址参数在同一页面切换状态，不复制页面。把样式、脚本和大块数据拆到同目录的 `.css`、`.js` 文件；页面变大时按功能继续拆分。颜色、字号、间距、圆角先定成十来个 CSS 变量，后面一律引用变量，不引入需要构建的工具。表单、切换、展开这类状态用 Alpine.js 写在 HTML 属性上：把 `<skill>/assets/vendor/alpine.min.js` 复制到任务目录的 `vendor/` 再引用，状态集中在一个 `x-data` 里，初始状态读地址参数。手势跟手、物理模拟、Canvas 和 WebGL 绘制放进单独的 JS 模块，每帧更新的数据不放进 Alpine 的状态。
