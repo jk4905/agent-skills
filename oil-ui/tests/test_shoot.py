@@ -361,7 +361,6 @@ process.stdout.write(eval(writer+'; screencastList(frames,finished)'));'''
                 (['--stitch', str(image), str(image), str(image)], '每张图片前都要写 --stitch'),
                 (['--stitch', str(image), '--record'], '拼图不需要页面'),
                 (['--stitch', str(image), '--frames', '8'], '拼图不需要页面'),
-                (['page.html', '--frames', '8'], '--record --frames 8'),
                 (['--frames', '8'], '缺少页面'),
                 (['page.html', '--record', '--frames'], '--record --frames 8'),
                 (['page.html', '--columns', '2'], '--record --frames 8 --columns 4'),
@@ -379,8 +378,52 @@ process.stdout.write(eval(writer+'; screencastList(frames,finished)'));'''
             self.assertEqual(plan['options']['frames'], '8')
             self.assertEqual(plan['options']['columns'], '4')
             self.assertEqual(self.dry('--evidence', '--frames', '6')['options']['frames'], '6')
+            self.assertEqual(self.dry('--frames8')['options']['frames'], '8')
+            self.assertIn('--frames', self.dry('--frames8', '--selector', '.card', ok=False))
+            self.assertIn('--frames', self.dry('--frames8', '--thumb', ok=False))
             self.assertIn('--frames 8', self.dry('--record', '--frams', ok=False))
             self.assertIn('--stitch before.png', self.dry('--stitc', ok=False))
+
+    def test_stitch_scale_crop_forms_and_actionable_errors(self):
+        with tempfile.TemporaryDirectory(prefix='oil-stitch-scale-cli-') as temp:
+            image = Path(temp) / 'image with spaces.png'
+            image.write_bytes(b'decode only on render')
+
+            def run(*args, ok=True):
+                result = subprocess.run([NODE, str(SCRIPT), *args, '--dry-run'], cwd=ROOT,
+                                        capture_output=True, text=True, timeout=10, encoding='utf-8')
+                self.assertEqual(result.returncode, 0 if ok else 1, result.stdout + result.stderr)
+                if not ok:
+                    self.assertIn('收到', result.stderr)
+                    self.assertIn('例如', result.stderr)
+                    self.assertIn('node scripts/shoot.mjs --stitch', result.stderr)
+                return json.loads(result.stdout) if ok else result.stderr
+
+            for crop in ('10,20,300,200', '10 20 300 200', '[10px，20px，300px，200px]', '10×20×300×200', '10 px 20 px 300 px 200 px'):
+                plan = run('--stitch', str(image), '--match-width240px', '--stitch=' + str(image),
+                           '--match-width=300 px', '--crop', crop)
+                self.assertEqual([item['matchWidth'] for item in plan['stitch']], [240, 300])
+                self.assertEqual(plan['options']['crop'], {'x': 10, 'y': 20, 'width': 300, 'height': 200})
+            for scale in ('0.8', '.8x', '80%', '4/5', '0.8×'):
+                plan = run('--stitch', str(image), '--scale=' + scale)
+                self.assertAlmostEqual(plan['stitch'][0]['scale'], .8)
+            for args in [
+                ['--scale', '1'], ['--match-width', '240'], ['page.html', '--crop', '0,0,10,10'],
+                ['--stitch', str(image), '--scale', '0'], ['--stitch', str(image), '--scale', '1/0'],
+                ['--stitch', str(image), '--scale', 'NaN'], ['--stitch', str(image), '--scale'],
+                ['--stitch', str(image), '--scale='], ['--stitch', str(image), '--match-width='],
+                ['--stitch', str(image), '--match-width', '-20'], ['--stitch', str(image), '--match-width'],
+                ['--stitch', str(image), '--scale1', '--scale2'],
+                ['--stitch', str(image), '--match-width240', '--stitch', str(image)],
+                ['--stitch', str(image), '--match-width240', '--stitch', str(image), '--scale1'],
+                ['--stitch', str(image), '--crop', '-1,0,20,20'],
+                ['--stitch', str(image), '--crop', '0,0,0,20'],
+                ['--stitch', str(image), '--crop', '0,0,20'], ['--stitch', str(image), '--crop'],
+                ['--stitch', str(image), '--crop='], ['--stitch', str(image), '--crop', '1px0,0,20,20'],
+                ['--stitch', str(image), '--crop', '0,0,20,20', '--crop', '0,0,30,30'],
+            ]:
+                with self.subTest(args=args):
+                    run(*args, ok=False)
 
     def test_sequence_sampling_is_uniform_and_holds_sparse_frames(self):
         javascript = '''import {readFileSync} from 'node:fs';
@@ -486,21 +529,26 @@ document.querySelector('#go').onclick = () => show(document.body.dataset.state =
         self.page.write_text('''<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" href="data:,"><style>
 body{margin:0;min-height:2600px;background:#f00;scroll-behavior:smooth}
+header{position:sticky;top:0;height:60px;background:#f00;z-index:10}
 .card{position:absolute;top:1800px;left:30px;width:160px;height:100px;background:#00ff00}
-</style><div class="card" hidden></div><div class="card">Save</div>
+.tall{position:absolute;top:1100px;left:30px;width:160px;height:600px;background:#00ff00}
+</style><header>Sticky</header><div class="card" hidden></div><div class="card">Save</div>
+<div class="tall">Tall card</div>
 <div class="card" style="top:2100px;background:blue">Later</div>
 <script>Object.defineProperty(document,'images',{get(){
 if(scrollY<1)console.error('selector-did-not-scroll');return [];}})</script>''', encoding='utf-8')
         for selector, extra, size in [('.card', (), (160, 100)), ('text=Save', ('--thumb',), (80, 50)),
+                                      ('.tall', (), (160, 600)),
                                       ('div:text-is("Save")', ('--mask', '--mark', '.card'), (160, 100))]:
             with self.subTest(selector=selector):
-                output = self.folder / ('crop-' + str(size[0]) + '-' + str(len(extra)))
+                output = self.folder / ('crop-' + str(size[0]) + '-' + str(size[1]) + '-' + str(len(extra)))
                 self.shoot(output, '--selector', selector, *extra)
                 report = json.loads((output / 'report.json').read_text(encoding='utf-8'))
                 self.assertEqual(report[0]['issues'], [])
                 self.assertEqual(struct.unpack('>II', (output / 'page.png').read_bytes()[16:24]), size)
                 if shutil.which('ffmpeg'):
-                    self.assertEqual(self.frame_pixel(output / 'page.png', 10, 80 if size[1] == 100 else 40), (0, 255, 0))
+                    self.assertEqual(self.frame_pixel(output / 'page.png', size[0] - 10, 10), (0, 255, 0))
+                    self.assertEqual(self.frame_pixel(output / 'page.png', 10, 80 if size[1] >= 100 else 40), (0, 255, 0))
                 if '--mask' in extra:
                     for file in ('page-masked.png', 'page-marked.png'):
                         self.assertEqual(struct.unpack('>II', (output / file).read_bytes()[16:24]), size)
@@ -629,6 +677,47 @@ fetch('../shared.txt').then(r=>r.text()).then(t=>{{if(t!=='shared')console.error
                                        '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], check=True, capture_output=True, timeout=10).stdout
                 captions.append(crop)
             self.assertNotEqual(captions[0], captions[1], 'Different Chinese glyphs must not render as identical missing-font boxes')
+        self.assert_no_browser_leftovers()
+
+    def test_stitch_normalizes_common_elements_and_crops_after_scaling(self):
+        # Different overall widths with the same content rendered at 1x and 2x.
+        first, second = self.folder / 'reference.svg', self.folder / 'screenshot.svg'
+        for path, width, height, view_width in [(first, 1000, 700, 1000), (second, 1600, 1400, 800)]:
+            path.write_text(f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+                            f'viewBox="0 0 {view_width} 700"><rect width="100%" height="100%" fill="lime"/>'
+                            '<rect width="100" height="700" fill="red"/></svg>', encoding='utf-8')
+        for name, first_options, second_options, crop, expected in [
+            ('widths', ['--match-width', '100px'], ['--match-width200'], [], [(640, 448), (512, 448)]),
+            ('crop', ['--scale', '1'], ['--scale', '50%'], ['--crop', '25,20,500,300'], [(500, 300), (500, 300)]),
+        ]:
+            with self.subTest(name=name):
+                output = self.folder / name
+                result = subprocess.run([NODE, str(SCRIPT), '--stitch', str(first), *first_options,
+                                         '--stitch', str(second), *second_options, *crop, '--out', str(output)],
+                                        cwd=ROOT, env=self.env, capture_output=True, text=True, timeout=30, encoding='utf-8')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                report = json.loads((output / 'report.json').read_text(encoding='utf-8'))[0]
+                self.assertEqual([(item['width'], item['height']) for item in report['items']], expected)
+                self.assertEqual([item['scale'] for item in report['items']], [1, .5])
+                a, b = report['items']
+                self.assertAlmostEqual(a['renderScale'] * 100, b['renderScale'] * 200)
+                if crop:
+                    self.assertEqual(a['sourceCrop'], {'x': 25, 'y': 20, 'width': 500, 'height': 300})
+                    self.assertEqual(b['sourceCrop'], {'x': 50, 'y': 40, 'width': 1000, 'height': 600})
+                if shutil.which('ffmpeg'):
+                    boundary = 75 if crop else 64
+                    for item in report['items']:
+                        self.assertEqual(self.frame_pixel(output / 'stitch.png', item['x'] + boundary - 2, item['y'] + 10), (255, 0, 0))
+                        self.assertEqual(self.frame_pixel(output / 'stitch.png', item['x'] + boundary + 2, item['y'] + 10), (0, 255, 0))
+        for options, hint in [(['--crop', '0,0,1200,300'], '裁切超出图片'),
+                              (['--match-width', '2000'], '共有元素宽超出原图宽')]:
+            output = self.folder / 'invalid'
+            result = subprocess.run([NODE, str(SCRIPT), '--stitch', str(first), *options, '--out', str(output)],
+                                    cwd=ROOT, env=self.env, capture_output=True, text=True, timeout=30, encoding='utf-8')
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn(hint, result.stderr)
+            self.assertIn('例如 node scripts/shoot.mjs', result.stderr)
+            self.assertFalse((output / 'stitch.png').exists())
         self.assert_no_browser_leftovers()
 
     def test_stitch_wraps_labels_and_reports_decode_errors(self):
@@ -834,12 +923,36 @@ fetch('../shared.txt').then(r=>r.text()).then(t=>{{if(t!=='shared')console.error
     @unittest.skipUnless(shutil.which('ffmpeg'), 'ffmpeg is needed for evidence recording')
     def test_sequence_png_respects_evidence_filename_collisions(self):
         output = self.folder / 'sequence-collision'
-        self.shoot(output, '--evidence', '--states', 'motion-entry-sequence', '--hold', '100', '--frames', '2')
+        self.shoot(output, '--evidence', '--record', '--states', 'motion-entry-sequence', '--hold', '100', '--frames', '2')
         report = json.loads((output / 'report.json').read_text(encoding='utf-8'))
         sequence = next(item['sequence'] for item in report if 'sequence' in item)
         self.assertEqual(sequence['file'], 'motion-entry-2-sequence.png')
         self.assert_artifacts(output, ('motion-entry-sequence.png', sequence['file'], 'record-entry-2.mp4'))
         self.assertNotEqual((output / 'motion-entry-sequence.png').read_bytes(), (output / sequence['file']).read_bytes())
+
+    def test_frames_without_record_skips_encoder_for_actions_and_evidence(self):
+        # Fail on any encoder invocation, even ffmpeg -version; frames must work without it.
+        hook = self.folder / 'no-encoder.mjs'
+        hook.write_text('''import cp from 'node:child_process'; import {syncBuiltinESMExports} from 'node:module';
+const spawn = cp.spawn;
+cp.spawn = function(file, ...args) { if (file === 'ffmpeg') throw new Error('encoder must not run'); return spawn.call(this, file, ...args); };
+syncBuiltinESMExports();''', encoding='utf-8')
+        self.env['NODE_OPTIONS'] = '--import=' + hook.as_uri()
+        for name, extra in [('actions', []), ('evidence', ['--evidence'])]:
+            with self.subTest(name=name):
+                output = self.folder / name
+                result = self.shoot(output, '--frames', '3', '--hold', '100', '--steps', 'go: click #go', *extra)
+                report = json.loads((output / 'report.json').read_text(encoding='utf-8'))
+                sequences = [entry['sequence'] for entry in report if 'sequence' in entry]
+                self.assertEqual(len(sequences), 2 if extra else 1)
+                self.assertIn('未编码视频', result.stdout)
+                self.assertEqual(list(output.glob('*.mp4')), [])
+                self.assertEqual(list(output.glob('frames*')), [])
+                for sequence in sequences:
+                    self.assert_artifacts(output, [sequence['file']])
+                    self.assertEqual(len(sequence['items']), 3)
+                self.assertEqual([entry['issues'] for entry in report if 'sequence' in entry], [[] for _ in sequences])
+        self.assert_no_browser_leftovers()
 
     @unittest.skipUnless(shutil.which('ffmpeg'), 'ffmpeg is needed to inspect frame pixels')
     def test_record_frames_follow_last_action_and_capture_short_feedback(self):
@@ -1060,7 +1173,7 @@ h1{font-size:48px;margin:0 0 24px;background:linear-gradient(90deg,#7c3aed,#06b6
 .num{font-size:12px;margin:0}h2{font-size:28px;margin:4px 0 24px}
 .card{border:1px solid #ddd;border-radius:16px;padding:24px;margin:16px 0}
 .quote{border-left:4px solid #e11d48;padding:12px 16px}.low{color:#c8c8c8}
-.dense{font-size:11px;line-height:1.2;width:600px}.ghost{opacity:0}
+.dense{font-size:10px;line-height:1.2;width:600px}.ghost{opacity:0}
 </style></head><body><p class="eyebrow">Smart Ledger</p><h1>让记账更简单</h1>
 <p class="num">01 / 账户</p><h2>所有账户一目了然</h2>
 <div class="card">外层<div class="card">里层卡片里有一些文字</div></div>
@@ -1075,25 +1188,12 @@ h1{font-size:48px;margin:0 0 24px;background:linear-gradient(90deg,#7c3aed,#06b6
         entry = json.loads((output / "report.json").read_text(encoding="utf-8"))[0]
         self.assertEqual(entry["issues"], [])
         rules = {item["rule"] for item in entry["lint"]}
-        for rule in ("eyebrow", "numbered", "gradientText", "sideStripe", "nestedCards", "emojiIcon",
-                     "englishLabel", "contrastLow", "smallText", "tightLeading", "longMeasure", "stuck"):
+        for rule in ("contrastLow", "smallText", "tightLeading", "stuck"):
             self.assertIn(rule, rules)
-        self.assertIn("默认做法提示", result.stdout)
-
-    def test_lint_spares_reactions_but_keeps_navigation_and_feature_emoji(self):
-        self.page.write_text('''<!doctype html><meta charset="utf-8"><link rel="icon" href="data:,">
-<button aria-pressed="false"><span>😍</span><span>5</span></button>
-<button><span>🔥</span> 3</button><button role="button" aria-pressed="true"><span>😂</span></button>
-<p>用户内容 <span>🚀</span></p><blockquote><span>💰</span></blockquote>
-<div role="listbox"><button>🧡</button><button>☀️</button></div>
-<nav><button aria-pressed="true"><span>🚀</span> 启动</button><a><span>💰</span> 账户</a></nav>
-<ul><li><span>🧭</span> 方向</li><li><span>🎉</span> 成果</li></ul>''', encoding='utf-8')
-        output = self.folder / 'semantic-emoji'
-        self.shoot(output)
-        hints = json.loads((output / 'report.json').read_text(encoding='utf-8'))[0]['lint']
-        emoji = next(h for h in hints if h['rule'] == 'emojiIcon')
-        self.assertEqual(emoji['count'], 4)
-        self.assertFalse(any(symbol in ' '.join(emoji['examples']) for symbol in ('😍', '🔥', '😂', '🧡', '☀️')))
+        for removed in ("eyebrow", "numbered", "gradientText", "sideStripe", "emojiIcon",
+                        "englishLabel", "grayOnColor", "longMeasure", "headingSpacing", "sourceSplit"):
+            self.assertNotIn(removed, rules)
+        self.assertIn("可读性与渲染提示", result.stdout)
 
     def test_lint_spares_interaction_boundaries_attachments_and_empty_slots(self):
         self.page.write_text('''<!doctype html><link rel="icon" href="data:,"><style>
@@ -1114,7 +1214,7 @@ body{margin:0}.outer{border-radius:12px;background:#eee;padding:12px;width:340px
         hints = json.loads((output / 'report.json').read_text(encoding='utf-8'))[0]['lint']
         self.assertNotIn('nestedCards', {h['rule'] for h in hints})
 
-    def test_lint_keeps_content_cards_inside_panels_and_editors(self):
+    def test_lint_allows_content_cards_inside_panels_and_editors(self):
         self.page.write_text('''<!doctype html><link rel="icon" href="data:,"><style>
 .outer{border-radius:12px;background:#eee;padding:12px;width:340px}
 .box{border:1px solid #777;border-radius:8px;padding:8px;width:260px;min-height:56px}
@@ -1123,22 +1223,24 @@ body{margin:0}.outer{border-radius:12px;background:#eee;padding:12px;width:340px
         output = self.folder / 'real-cards'
         self.shoot(output, '--size', 'desktop')
         hints = json.loads((output / 'report.json').read_text(encoding='utf-8'))[0]['lint']
-        self.assertEqual(next(h for h in hints if h['rule'] == 'nestedCards')['count'], 2)
+        self.assertNotIn('nestedCards', {h['rule'] for h in hints})
 
     def test_lint_requires_body_contrast_of_4_5(self):
         self.page.write_text('''<!doctype html><html><head><link rel="icon" href="data:,"><style>
 body{margin:0;padding:40px;font:16px/1.6 sans-serif;color:#222;background:#fff}
 body::before{content:"";position:absolute;left:0;top:0;width:12px;height:12px;background:#111}
 .soft{color:#8a8a8a}
+.low{color:#aaa}
 .faint{color:#eee}
-.faint-tiny{color:#eee;font-size:11px;line-height:1.2;width:280px}
+.faint-tiny{color:#eee;font-size:10px;line-height:1.2;width:280px}
 .seg{position:relative;display:inline-block;padding:8px 16px}
 .seg-pill{position:absolute;inset:0;background:#111;border-radius:8px}
 .seg-label{position:relative;color:#fff}
 .pseudo-seg{position:relative;display:inline-block;padding:8px 16px;color:#fff}
 .pseudo-seg::before{content:"";position:absolute;inset:0;background:#111;border-radius:8px;z-index:-1}
 </style></head><body>
-<p class="soft">Body text at about 3.5 to 1 contrast still fails the 4.5 to 1 floor.</p>
+<p class="soft">Secondary text at about 3.5 to 1 contrast is spared by the 3.0 floor.</p>
+<p class="low">Body text at about 2.3 to 1 contrast still fails the 3.0 floor.</p>
 <p class="faint">Body text at 1.16 to 1 on a plain white background must also be reported.</p>
 <p class="faint-tiny">这是一段在白底上几乎看不见而且字号过小、行高过紧的多行中文正文，用来验证极低对比度不会跳过排版检查。</p>
 <div class="seg"><span class="seg-pill"></span><span class="seg-label">Active Tab</span></div>
@@ -1169,18 +1271,6 @@ nav a.active::before{content:"";position:absolute;left:0;top:4px;width:3px;heigh
         output = self.folder / "clean"
         self.shoot(output, "--size", "1280x800")
         self.assertEqual(json.loads((output / "report.json").read_text(encoding="utf-8"))[0]["lint"], [])
-
-        self.page.write_text('''<!doctype html><html><head><link rel="icon" href="data:,"><style>
-body{margin:0;padding:40px;font:16px/1.6 sans-serif;color:#222}
-nav a{display:block;position:relative;padding:8px 16px;width:120px}
-nav a.plain-border{border-left:4px solid #e11d48}
-nav a.plain-pseudo::before{content:"";position:absolute;left:0;top:4px;width:4px;height:32px;background:#e11d48}
-</style></head><body><nav><a href="#a" class="plain-border">Unselected A</a><a href="#b" class="plain-pseudo">Unselected B</a></nav></body></html>''', encoding="utf-8")
-        flagged = self.folder / "nav-unselected"
-        self.shoot(flagged, "--size", "1280x800")
-        lint = {item["rule"]: item for item in json.loads((flagged / "report.json").read_text(encoding="utf-8"))[0]["lint"]}
-        self.assertIn("sideStripe", lint)
-        self.assertEqual(lint["sideStripe"]["count"], 2)
 
     def test_compare_against_reference(self):
         reference = self.folder / "reference"
@@ -2206,39 +2296,6 @@ div{{animation:slow {duration}}}</style><div>Ready</div>''', encoding='utf-8')
         self.shoot(output, '--motion')
         probe = json.loads((output / 'report.json').read_text(encoding='utf-8'))[0]
         self.assertTrue(any('--steps' in issue and '交互动效' in issue for issue in probe['issues']))
-
-    def test_local_source_split_hint_threshold_and_exclusions(self):
-        styles = self.folder / 'large.css'
-        styles.write_text('/*' + 'x' * (41 * 1024) + '*/', encoding='utf-8')
-        self.page.write_text('''<!doctype html><html><head><link rel="stylesheet" href="large.css"></head>
-<body><h1>Small page</h1></body></html>''', encoding='utf-8')
-        output = self.folder / 'source-split-hint'
-        self.shoot(output)
-        report = json.loads((output / 'report.json').read_text(encoding='utf-8'))[0]
-        hint = next(item for item in report['lint'] if item['rule'] == 'sourceSplit')
-        self.assertIn('large.css', hint['examples'][0])
-
-        long_line = self.folder / 'single-line.js'
-        long_line.write_text('/*' + 'x' * 20001 + '*/', encoding='utf-8')
-        self.page.write_text('''<!doctype html><html><head><script src="single-line.js"></script></head>
-<body><h1>Small page</h1></body></html>''', encoding='utf-8')
-        long_output = self.folder / 'source-split-long-line'
-        self.shoot(long_output)
-        long_report = json.loads((long_output / 'report.json').read_text(encoding='utf-8'))[0]
-        long_hint = next(item for item in long_report['lint'] if item['rule'] == 'sourceSplit')
-        self.assertIn('single-line.js', long_hint['examples'][0])
-        self.assertIn('20,005', long_hint['examples'][0])
-
-        vendor = self.folder / 'vendor'
-        vendor.mkdir()
-        (vendor / 'framework.min.js').write_text('x' * (41 * 1024), encoding='utf-8')
-        self.page.write_text('''<!doctype html><html><head><script src="vendor/framework.min.js"></script></head>
-<body><h1>Small page</h1></body></html>''', encoding='utf-8')
-        small_output = self.folder / 'source-split-exclusions'
-        self.shoot(small_output)
-        small_report = json.loads((small_output / 'report.json').read_text(encoding='utf-8'))[0]
-        self.assertFalse(any(item['rule'] == 'sourceSplit' for item in small_report['lint']))
-
 
 
 if __name__ == "__main__":
