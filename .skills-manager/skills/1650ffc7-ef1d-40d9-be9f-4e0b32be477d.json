@@ -8,7 +8,7 @@
   "source": {
     "type": "skillssh",
     "ref": "tavily-ai/skills/tavily-search",
-    "subpath": "skills/tavily-search",
+    "subpath": "skills/core/tavily-search",
     "branch": null
   }
 }
