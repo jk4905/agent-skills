@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "969cde0b-f4c6-484b-81bb-b91b72ca3e90",
+  "path": "planning-and-task-breakdown",
+  "path_key": "planning-and-task-breakdown",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "addyosmani/agent-skills/planning-and-task-breakdown",
+    "subpath": "skills/planning-and-task-breakdown",
+    "branch": null
+  }
+}
