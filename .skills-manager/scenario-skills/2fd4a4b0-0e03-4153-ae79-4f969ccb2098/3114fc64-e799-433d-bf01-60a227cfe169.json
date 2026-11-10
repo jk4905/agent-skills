@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "scenario_id": "2fd4a4b0-0e03-4153-ae79-4f969ccb2098",
+  "skill_id": "3114fc64-e799-433d-bf01-60a227cfe169",
+  "sort_order": 2,
+  "tools": {
+    "antigravity": false,
+    "claude_code": false,
+    "codex": false,
+    "cursor": false,
+    "deepseek_harness": false,
+    "gemini_cli": false,
+    "minimax_code": false
+  }
+}

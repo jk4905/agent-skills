@@ -2,16 +2,16 @@
   "schema_version": 1,
   "scenario_id": "2fd4a4b0-0e03-4153-ae79-4f969ccb2098",
   "skill_id": "3af1f8e5-b860-4581-8873-f2540c605f21",
-  "sort_order": 29,
+  "sort_order": 30,
   "tools": {
-    "antigravity": true,
-    "claude_code": true,
-    "codex": true,
-    "cursor": true,
-    "deepseek_harness": true,
-    "gemini_cli": true,
+    "antigravity": false,
+    "claude_code": false,
+    "codex": false,
+    "cursor": false,
+    "deepseek_harness": false,
+    "gemini_cli": false,
     "github_copilot": true,
     "hermes": true,
-    "minimax_code": true
+    "minimax_code": false
   }
 }
