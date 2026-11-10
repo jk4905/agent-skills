@@ -13,6 +13,7 @@
     "gemini_cli": true,
     "github_copilot": true,
     "hermes": true,
+    "minimax_code": true,
     "openclaw": true,
     "opencode": true,
     "qoder": true,

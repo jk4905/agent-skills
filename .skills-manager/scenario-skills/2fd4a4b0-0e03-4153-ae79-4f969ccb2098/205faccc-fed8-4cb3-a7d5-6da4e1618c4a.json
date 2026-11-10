@@ -9,6 +9,7 @@
     "codex": true,
     "cursor": true,
     "deepseek_harness": true,
-    "gemini_cli": true
+    "gemini_cli": true,
+    "minimax_code": true
   }
 }

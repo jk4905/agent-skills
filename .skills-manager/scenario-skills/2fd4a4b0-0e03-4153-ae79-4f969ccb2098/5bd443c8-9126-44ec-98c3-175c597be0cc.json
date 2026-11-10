@@ -11,6 +11,7 @@
     "deepseek_harness": true,
     "gemini_cli": true,
     "github_copilot": true,
-    "hermes": true
+    "hermes": true,
+    "minimax_code": true
   }
 }
