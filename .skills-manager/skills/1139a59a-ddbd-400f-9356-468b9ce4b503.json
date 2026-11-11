@@ -8,7 +8,7 @@
   "source": {
     "type": "skillssh",
     "ref": "kepano/obsidian-skills/defuddle",
-    "subpath": "skills/defuddle",
+    "subpath": "plugins/obsidian/skills/defuddle",
     "branch": null
   }
 }

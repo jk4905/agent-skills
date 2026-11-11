@@ -8,7 +8,7 @@
   "source": {
     "type": "skillssh",
     "ref": "kepano/obsidian-skills/json-canvas",
-    "subpath": "skills/json-canvas",
+    "subpath": "plugins/obsidian/skills/json-canvas",
     "branch": null
   }
 }
