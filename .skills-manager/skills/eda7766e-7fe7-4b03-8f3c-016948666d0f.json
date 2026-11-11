@@ -8,7 +8,7 @@
   "source": {
     "type": "skillssh",
     "ref": "kepano/obsidian-skills/obsidian-cli",
-    "subpath": "skills/obsidian-cli",
+    "subpath": "plugins/obsidian/skills/obsidian-cli",
     "branch": null
   }
 }
