@@ -1,6 +1,6 @@
 ---
 name: ai-video-generation
-description: "Generate AI videos with Google Veo, Seedance 2.0, HappyHorse, Wan, Grok and 40+ models via inference.sh CLI. Models: Veo 3.1, Veo 3, Seedance 2.0, HappyHorse 1.0, Wan 2.5, Grok Imagine Video, OmniHuman, Fabric, HunyuanVideo. Capabilities: text-to-video, image-to-video, reference-to-video, video editing, lipsync, avatar animation, video upscaling, foley sound. Use for: social media videos, marketing content, explainer videos, product demos, AI avatars. Triggers: video generation, ai video, text to video, image to video, veo, animate image, video from image, ai animation, video generator, generate video, t2v, i2v, ai video maker, create video with ai, runway alternative, pika alternative, sora alternative, kling alternative, seedance, happyhorse"
+description: "Generate AI videos with Google Veo, Seedance 2.5, Kling, HappyHorse, Wan, Grok and 40+ models via inference.sh CLI. Models: Veo 3.1, Seedance 2.5, Kling v4, Runway Gen-4.5, FLUX 3 Video, HappyHorse 1.0, Wan 2.7, Grok Imagine Video 1.5, P-Video 2, OmniHuman, Fabric. Capabilities: text-to-video, image-to-video, reference-to-video, video editing, lipsync, avatar animation, video upscaling, foley sound. Use for: social media videos, marketing content, explainer videos, product demos, AI avatars. Triggers: video generation, ai video, text to video, image to video, veo, animate image, video from image, ai animation, video generator, generate video, t2v, i2v, ai video maker, create video with ai, runway, pika alternative, sora alternative, kling, seedance, happyhorse"
 allowed-tools: Bash(belt *)
 ---
 
@@ -32,26 +32,24 @@ belt app run google/veo-3-1-fast --input '{"prompt": "drone shot flying over a f
 |-------|--------|----------|
 | Veo 3.1 Fast | `google/veo-3-1-fast` | Fast, with optional audio |
 | Veo 3.1 | `google/veo-3-1` | Best quality, frame interpolation |
-| Veo 3 | `google/veo-3` | High quality with audio |
-| Veo 3 Fast | `google/veo-3-fast` | Fast with audio |
-| Veo 2 | `google/veo-2` | Realistic videos |
-| **P-Video** | `pruna/p-video` | Fast, economical, with audio support |
+| **P-Video 2** | `pruna/p-video-2` | Fast, economical, with audio support, up to 20s |
 | **WAN-T2V** | `pruna/wan-t2v` | Economical 480p/720p |
-| Grok Video | `xai/grok-imagine-video` | xAI, configurable duration |
-| **Seedance 2.0** | `bytedance/seedance-2-0` | Text/image/ref-to-video with sync audio, up to 1080p |
-| **Seedance 2.0 Fast** | `bytedance/seedance-2-0-fast` | Fast variant, same capabilities |
+| Wan 2.7 T2V | `alibaba/wan-2-7-t2v` | 720P/1080P, 2-15s |
+| Grok Imagine Video 1.5 | `xai/grok-imagine-video-1-5` | xAI, 1-15s, with audio |
+| **Seedance 2.5** | `bytedance/seedance-2-5` | Text/image/ref-to-video with sync audio, up to 1080p, 4-30s |
+| Kling v4 | `klingai/video-v4` | Cinematic, up to 1080p, up to 30s |
+| Runway Gen-4.5 | `runway/gen-4-5` | Runway's latest, 2-10s |
+| FLUX 3 Video | `bfl/flux-3-video` | BFL, keyframes, with audio |
 | **HappyHorse T2V** | `alibaba/happyhorse-1-0-t2v` | Physically realistic, up to 15s |
 
 ### Image-to-Video
 
 | Model | App ID | Best For |
 |-------|--------|----------|
-| Wan 2.5 | `falai/wan-2-5` | Animate any image |
-| Wan 2.5 I2V | `falai/wan-2-5-i2v` | High quality i2v |
+| Wan 2.7 I2V | `alibaba/wan-2-7-i2v` | High quality i2v, first+last frame |
 | **WAN-I2V** | `pruna/wan-i2v` | Economical 480p/720p |
-| **P-Video** | `pruna/p-video` | Fast i2v with audio |
-| **Seedance 2.0** | `bytedance/seedance-2-0` | Animate images with sync audio, up to 1080p |
-| **Seedance 2.0 Fast** | `bytedance/seedance-2-0-fast` | Fast variant, same capabilities |
+| **P-Video 2** | `pruna/p-video-2` | Fast i2v with audio |
+| **Seedance 2.5** | `bytedance/seedance-2-5` | Animate images with sync audio, up to 1080p |
 | **HappyHorse I2V** | `alibaba/happyhorse-1-0-i2v` | Animate images, up to 1080P/15s |
 | **HappyHorse R2V** | `alibaba/happyhorse-1-0-r2v` | Character-preserving from references |
 
@@ -74,7 +72,7 @@ belt app run google/veo-3-1-fast --input '{"prompt": "drone shot flying over a f
 
 | Tool | App ID | Description |
 |------|--------|-------------|
-| HunyuanVideo Foley | `infsh/hunyuanvideo-foley` | Add sound effects to video |
+| MMAudio | `infsh/mmaudio` | Add sound effects to video |
 | Topaz Upscaler | `falai/topaz-video-upscaler` | Upscale video quality |
 | Media Merger | `infsh/media-merger` | Merge videos with transitions |
 
@@ -97,17 +95,18 @@ belt app run google/veo-3-1-fast --input '{
 ### Grok Video
 
 ```bash
-belt app run xai/grok-imagine-video --input '{
+belt app run xai/grok-imagine-video-1-5 --input '{
   "prompt": "Waves crashing on a beach at sunset",
   "duration": 5
 }'
 ```
 
-### Image-to-Video with Wan 2.5
+### Image-to-Video with Wan 2.7
 
 ```bash
-belt app run falai/wan-2-5 --input '{
-  "image_url": "https://your-image.jpg"
+belt app run alibaba/wan-2-7-i2v --input '{
+  "first_frame": "https://your-image.jpg",
+  "prompt": "slow camera push-in"
 }'
 ```
 
@@ -115,8 +114,8 @@ belt app run falai/wan-2-5 --input '{
 
 ```bash
 belt app run bytedance/omnihuman-1-5 --input '{
-  "image_url": "https://portrait.jpg",
-  "audio_url": "https://speech.mp3"
+  "image": "https://portrait.jpg",
+  "audio": "https://speech.mp3"
 }'
 ```
 
@@ -124,37 +123,37 @@ belt app run bytedance/omnihuman-1-5 --input '{
 
 ```bash
 belt app run falai/fabric-1-0 --input '{
-  "image_url": "https://face.jpg",
-  "audio_url": "https://audio.mp3"
+  "image": "https://face.jpg",
+  "audio": "https://audio.mp3"
 }'
 ```
 
-### Seedance 2.0 Text-to-Video with Audio
+### Seedance 2.5 Text-to-Video with Audio
 
 ```bash
-belt app run bytedance/seedance-2-0 --input '{
+belt app run bytedance/seedance-2-5 --input '{
   "prompt": "a jazz band performing in a dimly lit club",
   "generate_audio": true,
   "duration": 10
 }'
 ```
 
-### Seedance 2.0 Image-to-Video
+### Seedance 2.5 Image-to-Video
 
 ```bash
-belt app run bytedance/seedance-2-0 --input '{
+belt app run bytedance/seedance-2-5 --input '{
   "image": "https://your-image.jpg",
   "prompt": "gentle camera movement, leaves rustling in the wind",
   "generate_audio": true
 }'
 ```
 
-### Seedance 2.0 Reference-to-Video
+### Seedance 2.5 Reference-to-Video
 
 ```bash
-belt app run bytedance/seedance-2-0 --input '{
-  "prompt": "A person who looks like the reference walking through a garden",
-  "reference_image": "https://portrait.jpg",
+belt app run bytedance/seedance-2-5 --input '{
+  "prompt": "The person in @Image1 walking through a garden",
+  "reference_images": ["https://portrait.jpg"],
   "generate_audio": true
 }'
 ```
@@ -182,22 +181,24 @@ belt app run alibaba/happyhorse-1-0-video-edit --input '{
 
 ```bash
 belt app run falai/pixverse-lipsync --input '{
-  "image_url": "https://portrait.jpg",
-  "audio_url": "https://speech.mp3"
+  "video": "https://talking-head.mp4",
+  "audio": "https://speech.mp3"
 }'
 ```
+
+Takes a video, not a still image. Omit `audio` and pass `text` (plus optional `voice_id`) to use the built-in TTS.
 
 ### Video Upscaling
 
 ```bash
-belt app run falai/topaz-video-upscaler --input '{"video_url": "https://..."}'
+belt app run falai/topaz-video-upscaler --input '{"video": "https://..."}'
 ```
 
 ### Add Sound Effects (Foley)
 
 ```bash
-belt app run infsh/hunyuanvideo-foley --input '{
-  "video_url": "https://silent-video.mp4",
+belt app run infsh/mmaudio --input '{
+  "video_input": "https://silent-video.mp4",
   "prompt": "footsteps on gravel, birds chirping"
 }'
 ```
@@ -206,8 +207,10 @@ belt app run infsh/hunyuanvideo-foley --input '{
 
 ```bash
 belt app run infsh/media-merger --input '{
-  "videos": ["https://clip1.mp4", "https://clip2.mp4"],
-  "transition": "fade"
+  "media_files": [
+    {"file": "https://clip1.mp4", "transition_type": "crossfade"},
+    {"file": "https://clip2.mp4"}
+  ]
 }'
 ```
 
@@ -217,13 +220,13 @@ belt app run infsh/media-merger --input '{
 # Full platform skill (all apps)
 npx skills add inference-sh/skills@infsh-cli
 
-# Pruna P-Video (fast & economical)
+# Pruna P-Video 2 (fast & economical)
 npx skills add inference-sh/skills@p-video
 
 # Google Veo specific
 npx skills add inference-sh/skills@google-veo
 
-# Seedance 2.0
+# Seedance 2.5
 npx skills add inference-sh/skills@seedance
 
 # HappyHorse 1.0
