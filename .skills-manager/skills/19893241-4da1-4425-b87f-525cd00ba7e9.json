@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "19893241-4da1-4425-b87f-525cd00ba7e9",
+  "path": "be-ambitious",
+  "path_key": "be-ambitious",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "dannymac180/skills/be-ambitious",
+    "subpath": "be-ambitious",
+    "branch": null
+  }
+}
