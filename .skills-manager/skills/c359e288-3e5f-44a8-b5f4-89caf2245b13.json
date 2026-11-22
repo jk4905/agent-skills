@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "c359e288-3e5f-44a8-b5f4-89caf2245b13",
+  "path": "lieflat-less-ai-tone",
+  "path_key": "lieflat-less-ai-tone",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "larashero3-dotcom/lieflat-less-ai-tone/lieflat-less-ai-tone",
+    "subpath": null,
+    "branch": null
+  }
+}
