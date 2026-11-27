@@ -1,6 +1,6 @@
 # Be ambitious
 
-A small skill from [Attention Heads](https://attentionheads.substack.com/?utm_source=github&utm_medium=readme&utm_campaign=skills). Give it a task and it asks for a deeper version of that task, not a bigger one.
+A small skill from [Attention Heads](https://www.attentionheads.ai/?utm_source=github&utm_medium=readme&utm_campaign=skills). Give it a task and it asks for a deeper version of that task, not a bigger one.
 
 Adapted from a prompt shared by Felix Rieseberg (Anthropic).
 
