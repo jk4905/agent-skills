@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "skill_id": "224bcd25-3d29-4327-b677-edaf5fcec37e",
+  "path": "qws-zoom-out",
+  "path_key": "qws-zoom-out",
+  "enabled": true,
+  "tags": [],
+  "source": {
+    "type": "skillssh",
+    "ref": "qianwenflow/qwskill/qws-zoom-out",
+    "subpath": "skills/qws-zoom-out",
+    "branch": null
+  }
+}

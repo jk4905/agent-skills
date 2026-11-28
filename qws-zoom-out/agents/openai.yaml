@@ -1,0 +1,4 @@
+interface:
+  display_name: "qws-zoom-out"
+  short_description: "跳出当前局部，找到问题真正所在的层级和解法"
+  default_prompt: "Use $qws-zoom-out to step out of the local view and find the level where the problem really sits: check whether the question itself is right, which planned actions can be dropped, and give the concrete fix in the same reply."
